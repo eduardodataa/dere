@@ -1,0 +1,3 @@
+package br.gov.dere.persistence;
+import jakarta.persistence.*; import java.time.Instant;
+@Entity @Table(name="dere_event_error") public class DereEventErrorEntity { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @Column(name="event_id") private Long eventId; private String code; @Column(nullable=false) private String description; private String location; @Column(name="created_at") private Instant createdAt=Instant.now(); protected DereEventErrorEntity(){} public DereEventErrorEntity(Long eventId,String code,String description,String location){this.eventId=eventId;this.code=code;this.description=description;this.location=location;} }

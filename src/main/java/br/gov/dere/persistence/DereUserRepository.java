@@ -1,0 +1,1 @@
+package br.gov.dere.persistence; import java.util.*; import org.springframework.data.jpa.repository.JpaRepository; public interface DereUserRepository extends JpaRepository<DereUserEntity,Long>{Optional<DereUserEntity> findByLogin(String login);}

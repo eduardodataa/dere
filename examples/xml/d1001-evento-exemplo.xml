@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Exemplo estrutural baseado no XSD evtInfoContrib-v1_0_1.
+     A assinatura abaixo é ilustrativa e não possui validade criptográfica.
+     Use a aplicação para gerar a assinatura real com o certificado de teste. -->
+<DeRE xmlns="http://www.dere.gov.br/schemas/evtInfoContrib/v1_0_1"
+      xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+  <evtInfoContrib id="DeRE10011000000123456782026090212000000012">
+    <ideEvento>
+      <tpOper>1</tpOper>
+      <tpAmb>2</tpAmb>
+      <aplicEmi>1</aplicEmi>
+      <verAplic>dere-poc/0.1</verAplic>
+    </ideEvento>
+    <ideContrib>
+      <nrInsc>12345678</nrInsc>
+    </ideContrib>
+    <idePeriodo>
+      <iniValid>2026-10-01</iniValid>
+    </idePeriodo>
+    <infoContrib>
+      <regTribPrinc>9</regTribPrinc>
+      <indNatTrib>0</indNatTrib>
+    </infoContrib>
+  </evtInfoContrib>
+  <ds:Signature>
+    <ds:SignedInfo>
+      <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+      <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+      <ds:Reference URI="#DeRE10011000000123456782026090212000000012">
+        <ds:Transforms>
+          <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+          <ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+        </ds:Transforms>
+        <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+        <ds:DigestValue>AA==</ds:DigestValue>
+      </ds:Reference>
+    </ds:SignedInfo>
+    <ds:SignatureValue>AA==</ds:SignatureValue>
+    <ds:KeyInfo>
+      <ds:X509Data>
+        <ds:X509Certificate>AA==</ds:X509Certificate>
+      </ds:X509Data>
+    </ds:KeyInfo>
+  </ds:Signature>
+</DeRE>

@@ -1,0 +1,2 @@
+id,tpOper,tpAmb,aplicEmi,verAplic,nrInsc,perApur,cCta,descFundo,tpAquis,CNPJDevedor,dtAquisicao,dtInicioJuros,dtFimJuros,dtLiquidacao,vInicTitulo,vFinalTitulo,pJuros,vJuros,pSelic,vSelic,vPisCofins,vApur
+DeRE21011000000123456782026100112000000010,1,2,1,dere-poc/0.1,12345678,2026-10,2.1.01,Fundo de investimento,1,12345678000199,2026-10-01,2026-10-01,2027-10-01,,100000.00,100900.00,0.0090,900.00,0.0100,1000.00,,900.00

@@ -1,0 +1,2 @@
+id,tpOper,tpAmb,aplicEmi,verAplic,nrInsc,perApur,cCta,natSaldoInic,vSaldoInic,vMovDebt,vAjusteDebt,vMovCred,vAjusteCred,natSaldoFinal,vSaldoFinal,natVApur,vApur
+DeRE11011000000123456782026100112000000008,1,2,1,dere-poc/0.1,12345678,2026-10,1.1.01,1,100000.00,25000.00,,10000.00,,1,115000.00,1,25000.00

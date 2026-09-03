@@ -1,0 +1,2 @@
+id,tpOper,tpAmb,aplicEmi,verAplic,nrInsc,iniValid,fimValid,planoCtaRef,freqEncerr,cCta,cCtaInterna,cDbrMista,nomeCta,indCta,descCta,cCtaSup,cCtaRef,nivelCta,natCta,codNat,codTrib,indTribISS,idLeiDisp,iniVig,fimVig
+DeRE10111000000123456782026090212000000007,1,2,1,dere-poc/0.1,12345678,2026-10-01,,1,1,1.1.01,1.1.01,0,Disponibilidades,1,Conta de disponibilidades,,101000000,2,1,01,220110001,0,,2026-10-01,

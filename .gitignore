@@ -1,0 +1,15 @@
+target/
+.idea/
+*.iml
+*.pfx
+*.p12
+*.jks
+*.key
+*.pem
+.env
+application-local.yml
+node_modules/
+dist/
+.npm-cache/
+*.tsbuildinfo
+*.log

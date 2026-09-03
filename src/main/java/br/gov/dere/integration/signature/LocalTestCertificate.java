@@ -1,0 +1,6 @@
+package br.gov.dere.integration.signature;
+import java.math.BigInteger; import java.security.*; import java.security.cert.X509Certificate; import java.util.Date;
+import org.bouncycastle.asn1.x500.X500Name; import org.bouncycastle.cert.X509CertificateHolder; import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter; import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder; import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+public final class LocalTestCertificate { private LocalTestCertificate(){}
+ public static KeyStore create() throws Exception { Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider()); var kp=KeyPairGenerator.getInstance("RSA");kp.initialize(2048);var pair=kp.generateKeyPair();var now=new Date();var builder=new JcaX509v3CertificateBuilder(new X500Name("CN=DeRE POC Test"),BigInteger.ONE,now,new Date(now.getTime()+86400000L),new X500Name("CN=DeRE POC Test"),pair.getPublic());var holder=builder.build(new JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(pair.getPrivate()));X509Certificate cert=new JcaX509CertificateConverter().setProvider("BC").getCertificate(holder);var ks=KeyStore.getInstance("PKCS12");ks.load(null,null);ks.setKeyEntry("dere-test",pair.getPrivate(),"changeit".toCharArray(),new java.security.cert.Certificate[]{cert});return ks; }
+}
