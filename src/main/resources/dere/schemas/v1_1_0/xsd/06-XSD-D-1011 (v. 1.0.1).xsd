@@ -245,6 +245,11 @@
 							<xs:documentation>SPED</xs:documentation>
 						</xs:annotation>
 					</xs:enumeration>
+					<xs:enumeration value="5">
+						<xs:annotation>
+							<xs:documentation>PREVIC</xs:documentation>
+						</xs:annotation>
+					</xs:enumeration>
 					<xs:pattern value="\d{1}"/>
 				  </xs:restriction>
 				</xs:simpleType>
@@ -390,6 +395,7 @@
 									Se [2] (ANS): Tabela 32 – Plano de Contas Referencial – ANS
 									Se [3] (SUSEP): Tabela 23 – Plano de Contas Referencial – SUSEP
 									Se [4] (SPED): Tabela 14 – Plano de Contas Referencial – SPED
+									Se [5] (PREVIC): Tabela 24 – Plano de Contas Referencial – PREVIC
 									Caso o {cDbrMista} seja maior que zero, o {cCtaRef} desta {cCta} deve ser igual ao {cCtaRef} da {cCtaSup}
 								</xs:documentation>
                             </xs:annotation>

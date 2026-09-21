@@ -9,6 +9,7 @@ spring:
   h2.console.enabled: ${DERE_H2_CONSOLE:false}
 dere:
   mock.enabled: ${DERE_MOCK_ENABLED:true}
+  certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY:local-poc-change-me}
   environment: ${DERE_ENVIRONMENT:restricted-production}
   schema-version: ${DERE_SCHEMA_VERSION:nota_2026_001}
   api:

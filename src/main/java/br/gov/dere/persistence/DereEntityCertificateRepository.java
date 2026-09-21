@@ -1,0 +1,1 @@
+package br.gov.dere.persistence; import java.util.*; import org.springframework.data.jpa.repository.JpaRepository; public interface DereEntityCertificateRepository extends JpaRepository<DereEntityCertificateEntity,Long>{List<DereEntityCertificateEntity> findByEntityIdAndActiveTrue(Long entityId);}

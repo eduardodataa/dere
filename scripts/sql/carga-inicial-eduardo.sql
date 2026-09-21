@@ -5,10 +5,12 @@
 
 INSERT INTO dere_user (login, password_hash, display_name, active, created_at)
 SELECT 'eduardo', '$2b$12$ngRGz6RP4EK.wZUkMV1vuO59hzdfiq1ILM6kFZF2jidU6AW3Q6ScS', 'Eduardo', TRUE, CURRENT_TIMESTAMP
+FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM dere_user WHERE login = 'eduardo');
 
 INSERT INTO dere_entity (cnpj_root, legal_name, active, created_at)
 SELECT '12345678', 'Entidade Teste EFPC', TRUE, CURRENT_TIMESTAMP
+FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM dere_entity WHERE cnpj_root = '12345678');
 
 INSERT INTO dere_user_entity (user_id, entity_id)
