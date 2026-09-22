@@ -18,7 +18,7 @@ public class D1001ImportController {
   }
 
   @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public D1001ImportService.ImportReport importXml(
+  public D1001ImportService.RelatorioImportacao importarXml(
       @RequestPart("file") MultipartFile file,
       @RequestHeader("X-User-Id") Long userId,
       @RequestHeader("X-Entity-Id") Long entityId) throws Exception {

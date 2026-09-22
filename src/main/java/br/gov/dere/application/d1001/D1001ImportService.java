@@ -2,6 +2,9 @@ package br.gov.dere.application.d1001;
 
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.csv.DereCsvConverter;
+import br.gov.dere.application.validation.ServicoValidacaoLeiaute;
+import br.gov.dere.application.validation.relatorio.Critica;
+import br.gov.dere.application.validation.relatorio.RelatorioValidacao;
 import br.gov.dere.domain.contributor.D1001;
 import br.gov.dere.integration.xml.XmlSupport;
 import java.io.ByteArrayInputStream;
@@ -12,70 +15,57 @@ import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
 
 @Service
 public class D1001ImportService {
   private static final int MAX_XML_BYTES = 10_000_000;
   private static final long MAX_BATCH_BYTES = 100_000_000L;
-  private static final String XSD = "/dere/schemas/nota_2026_001/xsd/evtInfoContrib-v1_0_1.xsd";
   private final JdbcTemplate jdbc;
   private final AccessService access;
+  private final ServicoValidacaoLeiaute validacao;
   private final DereCsvConverter converter = new DereCsvConverter();
 
-  public D1001ImportService(JdbcTemplate jdbc, AccessService access) {
+  public D1001ImportService(JdbcTemplate jdbc, AccessService access, ServicoValidacaoLeiaute validacao) {
     this.jdbc = jdbc;
     this.access = access;
+    this.validacao = validacao;
   }
 
-  public ImportReport importFiles(MultipartFile file, Long userId, Long entityId) throws Exception {
+  public RelatorioImportacao importFiles(MultipartFile file, Long userId, Long entityId) throws Exception {
     if (file.isEmpty()) throw new IllegalArgumentException("Arquivo vazio");
     String source = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xml");
     List<NamedXml> documents = extract(file, source);
     if (documents.isEmpty()) throw new IllegalArgumentException("Nenhum XML encontrado no arquivo");
-    String expectedCnpj = access.entity(entityId).getCnpjRoot();
-    var xsd = getClass().getResource(XSD);
-    if (xsd == null) throw new IllegalStateException("XSD D-1001 não encontrado");
+    String cnpjEsperado = access.entity(entityId).getCnpjRoot();
     long totalBytes = documents.stream().mapToLong(x -> x.xml().getBytes(StandardCharsets.UTF_8).length).sum();
     long batchId = insertBatch(userId, entityId, source, documents.size(), totalBytes);
-    List<FileResult> files = new ArrayList<>();
-    int valid = 0, invalid = 0;
-    for (NamedXml document : documents) {
-      List<XmlSupport.Issue> issues = new ArrayList<>();
-      D1001 parsed = null;
-      String eventId = "";
-      String layout = detect(document.xml());
-      if (!"evtInfoContrib".equals(layout)) {
-        issues.add(new XmlSupport.Issue(0, 0, layout == null ? "" : layout, "erro",
-            "Layout esperado: D-1001 (evtInfoContrib). Encontrado: " + (layout == null ? "desconhecido" : layout)));
-      } else {
-        issues.addAll(XmlSupport.validateCollecting(XmlSupport.forSchemaValidation(document.xml()), xsd));
-        try {
-          parsed = converter.fromXml(document.xml());
-          eventId = parsed.id();
-          if (parsed.cnpjRoot() != null && !parsed.cnpjRoot().equals(expectedCnpj)) {
-            issues.add(new XmlSupport.Issue(0, 0, "nrInsc", "erro",
-                "CNPJ raiz do XML (" + parsed.cnpjRoot() + ") diverge da entidade selecionada (" + expectedCnpj + ")"));
-          }
-        } catch (Exception ex) {
-          issues.add(new XmlSupport.Issue(0, 0, "", "erro",
-              "Falha ao transformar XML em objeto D-1001: " + Optional.ofNullable(ex.getMessage()).orElse(ex.getClass().getSimpleName())));
-          eventId = readEventId(document.xml());
-        }
+    List<ResultadoArquivo> arquivos = new ArrayList<>();
+    List<Critica> criticas = new ArrayList<>();
+    int validos = 0, invalidos = 0;
+    for (NamedXml documento : documents) {
+      var relatorio = validacao.validarXml("D-1001", documento.xml(), documento.name(), cnpjEsperado, entityId);
+      criticas.addAll(relatorio.criticas());
+      D1001 analisado = null;
+      String idEvento = "";
+      try {
+        analisado = converter.fromXml(documento.xml());
+        idEvento = analisado.id();
+      } catch (Exception ex) {
+        idEvento = readEventId(documento.xml());
       }
-      boolean ok = issues.stream().noneMatch(i -> !"aviso".equals(i.severity()));
-      if (ok) valid++; else invalid++;
-      insertDocument(batchId, userId, entityId, document, ok, summarize(issues));
-      files.add(new FileResult(document.name(), eventId, ok, parsed, issues));
+      boolean ok = relatorio.valido();
+      if (ok) validos++; else invalidos++;
+      insertDocument(batchId, userId, entityId, documento, ok, resumir(relatorio));
+      arquivos.add(new ResultadoArquivo(documento.name(), idEvento, ok, analisado, paraProblemas(relatorio), relatorio.criticas()));
     }
-    jdbc.update("UPDATE dere_upload_batch SET valid_count=?, invalid_count=? WHERE id=?", valid, invalid, batchId);
-    return new ImportReport(batchId, "D-1001", source, documents.size(), valid, invalid, files, toCsv(files), convertedCsv(files));
+    jdbc.update("UPDATE dere_upload_batch SET valid_count=?, invalid_count=? WHERE id=?", validos, invalidos, batchId);
+    var planilha = validacao.agregar("D-1001", "XML", source, documents.size(), criticas);
+    return new RelatorioImportacao(batchId, "D-1001", source, documents.size(), validos, invalidos, arquivos, toCsv(arquivos), csvConvertido(arquivos), criticas, planilha.relatorioXlsx());
   }
 
   private List<NamedXml> extract(MultipartFile file, String source) throws Exception {
@@ -119,19 +109,6 @@ public class D1001ImportService {
         batchId, userId, entityId, doc.name(), valid, message, doc.xml());
   }
 
-  private static String detect(String xml) {
-    try {
-      var factory = DocumentBuilderFactory.newInstance();
-      factory.setNamespaceAware(true);
-      factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-      var dom = factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-      for (Node node = dom.getDocumentElement().getFirstChild(); node != null; node = node.getNextSibling()) {
-        if (node.getNodeType() == Node.ELEMENT_NODE) return node.getLocalName();
-      }
-    } catch (Exception ignored) {}
-    return null;
-  }
-
   private static String readEventId(String xml) {
     try {
       var d = XmlSupport.parse(xml);
@@ -142,28 +119,34 @@ public class D1001ImportService {
     }
   }
 
-  private static String summarize(List<XmlSupport.Issue> issues) {
-    if (issues.isEmpty()) return "";
-    var text = String.join(" | ", issues.stream().map(XmlSupport.Issue::message).toList());
-    return text.length() <= 2000 ? text : text.substring(0, 1997) + "...";
+  private static String resumir(RelatorioValidacao relatorio) {
+    if (relatorio.criticas().isEmpty()) return "";
+    var texto = String.join(" | ", relatorio.criticas().stream().map(Critica::problema).toList());
+    return texto.length() <= 2000 ? texto : texto.substring(0, 1997) + "...";
   }
 
-  private static String toCsv(List<FileResult> files) {
-    var out = new StringBuilder("arquivo,idEvento,valido,linha,coluna,campo,severidade,critica\n");
-    for (FileResult file : files) {
-      if (file.issues().isEmpty()) {
-        out.append(csv(file.fileName())).append(',').append(csv(file.eventId())).append(",SIM,,,,,\n");
+  private static List<XmlSupport.Issue> paraProblemas(RelatorioValidacao relatorio) {
+    return relatorio.criticas().stream()
+        .map(item -> new XmlSupport.Issue(item.linha() == null ? 0 : item.linha(), 0, item.coluna(), "erro", item.problema()))
+        .toList();
+  }
+
+  private static String toCsv(List<ResultadoArquivo> arquivos) {
+    var saida = new StringBuilder("arquivo,idEvento,valido,linha,coluna,campo,severidade,critica\n");
+    for (ResultadoArquivo arquivo : arquivos) {
+      if (arquivo.problemas().isEmpty()) {
+        saida.append(csv(arquivo.nomeArquivo())).append(',').append(csv(arquivo.idEvento())).append(",SIM,,,,,\n");
         continue;
       }
-      for (XmlSupport.Issue issue : file.issues()) {
-        out.append(csv(file.fileName())).append(',').append(csv(file.eventId())).append(',')
-            .append(file.valid() ? "SIM" : "NAO").append(',')
-            .append(issue.line()).append(',').append(issue.column()).append(',')
-            .append(csv(issue.field())).append(',').append(csv(issue.severity())).append(',')
-            .append(csv(issue.message())).append('\n');
+      for (XmlSupport.Issue problema : arquivo.problemas()) {
+        saida.append(csv(arquivo.nomeArquivo())).append(',').append(csv(arquivo.idEvento())).append(',')
+            .append(arquivo.valido() ? "SIM" : "NAO").append(',')
+            .append(problema.line()).append(',').append(problema.column()).append(',')
+            .append(csv(problema.field())).append(',').append(csv(problema.severity())).append(',')
+            .append(csv(problema.message())).append('\n');
       }
     }
-    return out.toString();
+    return saida.toString();
   }
 
   private static String csv(Object v) {
@@ -175,21 +158,21 @@ public class D1001ImportService {
     return name == null || name.startsWith("/") || name.startsWith("\\") || name.contains("..") || name.matches("^[A-Za-z]:.*");
   }
 
-  public record FileResult(String fileName, String eventId, boolean valid, D1001 parsed, List<XmlSupport.Issue> issues) {}
-  private String convertedCsv(List<FileResult> files) {
-    var out = new StringBuilder();
-    for (FileResult file : files) {
-      if (file.parsed() == null) continue;
-      var csv = converter.toCsv(file.parsed());
-      if (out.isEmpty()) out.append(csv);
+  public record ResultadoArquivo(String nomeArquivo, String idEvento, boolean valido, D1001 analisado, List<XmlSupport.Issue> problemas, List<Critica> criticas) {}
+  private String csvConvertido(List<ResultadoArquivo> arquivos) {
+    var saida = new StringBuilder();
+    for (ResultadoArquivo arquivo : arquivos) {
+      if (arquivo.analisado() == null) continue;
+      var csv = converter.toCsv(arquivo.analisado());
+      if (saida.isEmpty()) saida.append(csv);
       else {
-        var breakAt = csv.indexOf('\n');
-        if (breakAt >= 0 && breakAt + 1 < csv.length()) out.append('\n').append(csv.substring(breakAt + 1));
+        var quebra = csv.indexOf('\n');
+        if (quebra >= 0 && quebra + 1 < csv.length()) saida.append('\n').append(csv.substring(quebra + 1));
       }
     }
-    return out.toString();
+    return saida.toString();
   }
 
-  public record ImportReport(long batchId, String layout, String sourceName, int fileCount, int validCount, int invalidCount, List<FileResult> files, String reportCsv, String convertedCsv) {}
+  public record RelatorioImportacao(long idLote, String leiaute, String nomeOrigem, int quantidadeArquivos, int quantidadeValidos, int quantidadeInvalidos, List<ResultadoArquivo> arquivos, String csvRelatorio, String csvConvertido, List<Critica> criticas, String relatorioXlsx) {}
   private record NamedXml(String name, String xml) {}
 }

@@ -16,21 +16,40 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-function csvNameFromSource(name) {
-  if (!name) return 'convertido.csv';
-  const base = name.replace(/^.*[\\/]/, '');
+function nomeCsvDaOrigem(nome) {
+  if (!nome) return 'convertido.csv';
+  const base = nome.replace(/^.*[\\/]/, '');
   return base.replace(/\.(xml|zip)$/i, '.csv');
 }
 
-function download(name, content) {
-  const type = name.endsWith('.xml') ? 'application/xml;charset=utf-8' : 'text/csv;charset=utf-8';
-  const url = URL.createObjectURL(new Blob([content], { type }));
+function baixar(nome, conteudo) {
+  const tipo = nome.endsWith('.xml') ? 'application/xml;charset=utf-8' : 'text/csv;charset=utf-8';
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = name;
+  link.download = nome;
   link.click();
   URL.revokeObjectURL(url);
 }
+
+function nomeXlsx(nome, leiaute) {
+  const base = (nome || leiaute || 'validacao').replace(/^.*[\\/]/, '').replace(/\.(csv|xml|zip|xlsx)$/i, '');
+  return `${base}-criticas.xlsx`;
+}
+
+function baixarXlsx(nome, codificado) {
+  if (!codificado) return;
+  const bytes = Uint8Array.from(atob(codificado), caractere => caractere.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nome;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+const ROTULO_TIPO = { OBRIGATORIO: 'Obrigatório', FORA_DO_PADRAO: 'Fora do padrão', FORA_DO_DOMINIO: 'Fora de domínio', NEGOCIO: 'Regra de negócio', ESTRUTURA: 'Estrutura do arquivo' };
+const COR_TIPO = { OBRIGATORIO: 'warning', FORA_DO_PADRAO: 'warning', FORA_DO_DOMINIO: 'error', NEGOCIO: 'secondary', ESTRUTURA: 'default' };
 
 function App() {
   const [uid, setUid] = useState<number>();
@@ -80,7 +99,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
   const [csvResult, setCsvResult] = useState();
   const [csvText, setCsvText] = useState('');
   const currentLayout = lockedLayout || layout;
-  const critiques = (uploadResult?.files || []).flatMap(fileResult => (fileResult.issues || []).map(issue => ({ fileName: fileResult.fileName, eventId: fileResult.eventId, ...issue })));
+  const critiques = (uploadResult?.arquivos || []).flatMap(arquivo => (arquivo.criticas || []).map(item => ({ arquivo: arquivo.nomeArquivo, idEvento: arquivo.idEvento, ...item })));
   const subtitle = lockedLayout === 'D-1001'
     ? 'Envie CSV ou XML do D-1001 para análise.'
     : lockedLayout === 'D-1011'
@@ -92,18 +111,18 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     try {
       if (currentLayout === 'D-1011') {
         const xml = await file.text();
-        const response = await api.post('/api/layouts/d1011/xml-to-csv', xml, { headers: { 'Content-Type': 'application/xml', 'X-Entity-Id': eid } });
-        const csv = typeof response.data === 'string' ? response.data : String(response.data ?? '');
-        setCsvText(csv);
+        const response = await api.post('/api/layouts/d1011/validate-xml', xml, { headers: { 'Content-Type': 'application/xml', 'X-Entity-Id': eid } });
+        setCsvResult(response.data);
+        if (response.data.csv) setCsvText(response.data.csv);
         setUploadResult(undefined);
-        setMessage('XML D-1011 convertido para CSV.');
+        setMessage(response.data.valido ? 'XML D-1011 validado.' : 'XML D-1011 possui críticas.');
         return;
       }
       const form = new FormData();
       form.append('file', file);
       const response = await api.post('/api/layouts/d1001/import', form, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
       setUploadResult(response.data);
-      setMessage(response.data.invalidCount ? 'Foram encontradas críticas no lote.' : 'Lote validado sem críticas.');
+      setMessage(response.data.quantidadeInvalidos ? 'Foram encontradas críticas no lote.' : 'Lote validado sem críticas.');
     } catch (error) { setMessage(error.response?.data?.message || 'Falha no upload/validação'); }
   }
 
@@ -113,7 +132,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
       const endpoint = currentLayout === 'D-1011' ? '/api/layouts/d1011/validate-csv' : '/api/validation/csv-to-xml';
       const response = await api.post(endpoint, csvText, { headers: { 'Content-Type': 'text/csv', 'X-Entity-Id': eid } });
       setCsvResult(response.data);
-      setMessage(response.data.valid ? `${currentLayout} validado com sucesso.` : `${currentLayout} possui críticas.`);
+      setMessage(response.data.valido ? `${currentLayout} validado com sucesso.` : `${currentLayout} possui críticas.`);
     } catch (error) { setMessage(error.response?.data?.message || 'Falha na validação CSV'); }
   }
 
@@ -140,12 +159,18 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     event.target.value = '';
   }
 
-  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">Importação e validação</Typography><Typography color="text.secondary">{subtitle}</Typography>{!lockedLayout && <TextField select label="Layout" value={layout} onChange={event => { setLayout(event.target.value); setCsvResult(undefined); setUploadResult(undefined); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem></TextField>}<TextField select fullWidth label="Entidade" value={eid} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><Stack direction="row" spacing={2}><Button component="label" variant="outlined">Selecionar CSV<input hidden type="file" accept=".csv" onChange={loadCsvFile} /></Button><Button component="label" variant="outlined">Selecionar XML/ZIP<input hidden type="file" accept=".xml,.zip" onChange={loadXmlFile} /></Button></Stack><TextField className="resizable-preview" multiline rows={7} label="Conteúdo CSV" value={csvText} onChange={event => setCsvText(event.target.value)} /><Stack direction="row" spacing={2}><Button variant="contained" onClick={validateCsv}>Validar CSV</Button><Button variant="contained" color="secondary" onClick={uploadXml}>Processar XML/ZIP</Button></Stack>{csvResult && <ResultSummary result={csvResult} downloadLabel="Baixar XML" onDownload={csvResult.xml ? () => download(`${currentLayout.toLowerCase()}.xml`, csvResult.xml) : undefined} errors={(csvResult.errors || csvResult.details?.issues || []).map(item => typeof item === 'string' ? { message: item } : item)} />}{uploadResult && <ResultSummary result={uploadResult} downloadLabel="Baixar CSV" onDownload={uploadResult.convertedCsv ? () => download(csvNameFromSource(file?.name || uploadResult.sourceName), uploadResult.convertedCsv) : undefined} errors={critiques} />}</Stack></CardContent></Card>;
+  const criticasCsv = csvResult?.criticas || [];
+  const criticasXml = uploadResult?.criticas || critiques;
+  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">Importação e validação</Typography><Typography color="text.secondary">{subtitle}</Typography>{!lockedLayout && <TextField select label="Leiaute" value={layout} onChange={event => { setLayout(event.target.value); setCsvResult(undefined); setUploadResult(undefined); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem></TextField>}<TextField select fullWidth label="Entidade" value={eid} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><Stack direction="row" spacing={2}><Button component="label" variant="outlined">Selecionar CSV<input hidden type="file" accept=".csv" onChange={loadCsvFile} /></Button><Button component="label" variant="outlined">Selecionar XML/ZIP<input hidden type="file" accept=".xml,.zip" onChange={loadXmlFile} /></Button></Stack><TextField className="resizable-preview" multiline rows={7} label="Conteúdo CSV" value={csvText} onChange={event => setCsvText(event.target.value)} /><Stack direction="row" spacing={2}><Button variant="contained" onClick={validateCsv}>Validar CSV</Button><Button variant="contained" color="secondary" onClick={uploadXml}>Processar XML/ZIP</Button></Stack>{csvResult && <ResumoResultado resultado={csvResult} rotuloDownload="Baixar XML" aoBaixar={csvResult.xml ? () => baixar(`${currentLayout.toLowerCase()}.xml`, csvResult.xml) : undefined} aoRelatorio={csvResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || 'arquivo.csv', currentLayout), csvResult.relatorioXlsx) : undefined} criticas={criticasCsv} />}{uploadResult && <ResumoResultado resultado={uploadResult} rotuloDownload="Baixar CSV" aoBaixar={uploadResult.csvConvertido ? () => baixar(nomeCsvDaOrigem(file?.name || uploadResult.nomeOrigem), uploadResult.csvConvertido) : undefined} aoRelatorio={uploadResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || uploadResult.nomeOrigem, currentLayout), uploadResult.relatorioXlsx) : undefined} criticas={criticasXml} />}</Stack></CardContent></Card>;
 }
 
 function Dashboard({ onImport }) { return <><Grid container spacing={2} mb={3}><Grid item xs={12} md={4}><Metric title="Layouts ativos" value="2" detail="D-1001 e D-1011" /></Grid><Grid item xs={12} md={4}><Metric title="Importações" value="Pronto" detail="CSV e XML" /></Grid><Grid item xs={12} md={4}><Metric title="Transmissões" value="Mock local" detail="Integração controlada" /></Grid></Grid><Card><CardContent><Stack spacing={2}><Typography variant="h6">Comece uma operação</Typography><Typography color="text.secondary">Importe um arquivo, valide o modelo canônico e acompanhe as críticas por campo.</Typography><Button variant="contained" onClick={onImport}>Nova importação</Button></Stack></CardContent></Card></>; }
 function Metric({ title, value, detail }) { return <Card><CardContent><Typography color="text.secondary">{title}</Typography><Typography variant="h4" sx={{ mt: 1 }}>{value}</Typography><Typography variant="body2" color="text.secondary">{detail}</Typography></CardContent></Card>; }
-function ResultSummary({ result, onDownload, downloadLabel = 'Baixar CSV', errors = [] }) { return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Resumo da validação</Typography><Stack direction="row" spacing={1}><Chip color={result.valid === false || result.invalidCount > 0 ? 'error' : 'success'} label={result.valid === false || result.invalidCount > 0 ? 'Com críticas' : 'Válido'} /><Chip label={`${result.fileCount ?? 1} arquivo(s)`} /><Chip label={`${result.invalidCount ?? 0} erro(s)`} /></Stack>{result.xml && <TextField className="resizable-preview" multiline rows={5} label="XML gerado" value={result.xml} InputProps={{ readOnly: true }} />}{onDownload && <Button variant="outlined" onClick={onDownload}>{downloadLabel}</Button>}{errors.length > 0 && <Box className="error-list">{errors.map((error, index) => <Box key={index} sx={{ py: 1 }}><Typography variant="body2"><strong>{error.field || 'Documento'}</strong> · {error.message}</Typography><Divider /></Box>)}</Box>}</Stack></Paper>; }
+function ResumoResultado({ resultado, aoBaixar, aoRelatorio, rotuloDownload = 'Baixar CSV', criticas = [] }) {
+  const invalido = resultado.valido === false || resultado.quantidadeInvalidos > 0 || criticas.length > 0;
+  const linhasComProblema = resultado.linhasComProblema ?? new Set(criticas.map(item => item.linha).filter(Boolean)).size;
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Relatório da validação</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color={invalido ? 'error' : 'success'} label={invalido ? 'Com críticas' : 'Válido'} /><Chip label={`${resultado.totalLinhas ?? resultado.quantidadeArquivos ?? 1} linha(s)`} /><Chip label={`${linhasComProblema} linha(s) com problema`} /><Chip label={`${criticas.length} crítica(s)`} /></Stack><Stack direction="row" spacing={2}>{aoRelatorio && <Button variant="contained" onClick={aoRelatorio}>Baixar relatório Excel</Button>}{aoBaixar && <Button variant="outlined" onClick={aoBaixar}>{rotuloDownload}</Button>}</Stack>{resultado.xml && <TextField className="resizable-preview" multiline rows={5} label="XML gerado" value={resultado.xml} InputProps={{ readOnly: true }} />}{criticas.length > 0 && <Box className="tabela-criticas-wrap"><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{['Linha', 'Coluna', 'Tipo', 'Encontrado', 'Esperado', 'Como corrigir'].map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{criticas.map((item, indice) => <Box component="tr" key={indice}><Box component="td">{item.linha || '—'}</Box><Box component="td">{item.coluna || 'Documento'}</Box><Box component="td"><Chip size="small" color={COR_TIPO[item.tipo] || 'default'} label={item.rotuloTipo || ROTULO_TIPO[item.tipo] || item.tipo} /></Box><Box component="td">{item.valorEncontrado || '—'}</Box><Box component="td">{item.valorEsperado || '—'}</Box><Box component="td">{item.problema}</Box></Box>)}</Box></Box></Box>}</Stack></Paper>;
+}
 function UserAdmin({ api, currentUserId, onSelfMaster, setMessage }) {
   const empty = { id: null, login: '', name: '', password: '', master: false };
   const [rows, setRows] = useState([]);
