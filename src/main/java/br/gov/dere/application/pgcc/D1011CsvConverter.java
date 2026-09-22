@@ -17,10 +17,18 @@ public class D1011CsvConverter {
   public D1011 fromCsv(String csv) {
     var text = csv == null ? "" : csv.startsWith("\uFEFF") ? csv.substring(1) : csv;
     var lines = text.lines().filter(line -> !line.isBlank()).toList();
-    if (lines.size() < 2) throw new IllegalArgumentException("CSV deve conter cabeçalho e ao menos uma conta");
+    if (lines.size() < 2) throw new IllegalArgumentException("CSV deve conter cabeçalho e ao menos uma linha");
     var delimiter = delimiter(lines.get(0));
     var rows = lines.stream().map(line -> parseLine(line, delimiter)).toList();
     var headers = index(rows.get(0));
+    var firstGet = getter(headers, rows.get(1));
+    var operation = integer(firstGet, "tpOper");
+    if (operation == 3) {
+      return new D1011(required(firstGet, "id"), operation, optionalInteger(firstGet, "motExcl"),
+          firstGet.apply("nrProc"), integer(firstGet, "tpAmb"), integer(firstGet, "aplicEmi"), required(firstGet, "verAplic"),
+          required(firstGet, "nrInsc"), date(firstGet, "iniValid"), date(firstGet, "fimValid"),
+          blankToNull(firstGet.apply("planoCtaRef")), blankToNull(firstGet.apply("freqEncerr")), List.of());
+    }
     var accounts = new ArrayList<PGCCAccount>();
     D1011 first = null;
     for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
@@ -46,6 +54,13 @@ public class D1011CsvConverter {
 
   public String toCsv(D1011 document) {
     var out = new StringBuilder(HEADER).append('\n');
+    if (document.accounts().isEmpty()) {
+      out.append(String.join(";", csv(document.id()), csv(document.exclusionReason()), csv(document.processNumber()),
+          csv(document.operation()), csv(document.environment()), csv(document.application()), csv(document.applicationVersion()),
+          csv(document.cnpjRoot()), csv(document.validFrom()), csv(document.validTo()), csv(document.referenceChart()),
+          csv(document.closingFrequency()), "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "")).append('\n');
+      return out.toString();
+    }
     for (var account : document.accounts()) {
       out.append(String.join(";", csv(document.id()), csv(document.exclusionReason()), csv(document.processNumber()),
           csv(document.operation()), csv(document.environment()), csv(document.application()), csv(document.applicationVersion()),

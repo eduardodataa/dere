@@ -21,6 +21,20 @@ class ValidadorCamposCsvTest {
   }
 
   @Test
+  void exclusaoD1001NaoExigeInfoContrib() throws Exception {
+    var csv = Files.readString(Path.of("examples/envio-ciclo/1001-excluir.csv"));
+    var criticas = ValidadorCamposCsv.validar("D-1001", "1001-excluir.csv", csv);
+    assertEquals(0, criticas.size(), () -> criticas.toString());
+  }
+
+  @Test
+  void exclusaoD1011NaoExigeInfoPgcc() throws Exception {
+    var csv = Files.readString(Path.of("examples/envio-ciclo/1011-excluir.csv"));
+    var criticas = ValidadorCamposCsv.validar("D-1011", "1011-excluir.csv", csv);
+    assertEquals(0, criticas.size(), () -> criticas.toString());
+  }
+
+  @Test
   void apontaLinhaColunaDominioEValorEsperado() {
     var csv = """
         id;motExcl;nrProc;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;fimValid;novaValidadeIniValid;novaValidadeFimValid;regTribPrinc;regTribSecund;indNatTrib;tpAtividadeServFinanc;tpAtividadePlAssistSaude;tpAtividadePrognosticos;UFCredenc

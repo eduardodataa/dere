@@ -23,9 +23,11 @@ public class D1011XmlGenerator {
     text(dom, ide, "tpAmb", document.environment()); text(dom, ide, "aplicEmi", document.application()); text(dom, ide, "verAplic", document.applicationVersion());
     var contributor = child(dom, event, "ideContrib"); text(dom, contributor, "nrInsc", document.cnpjRoot());
     var period = child(dom, event, "idePeriodo"); text(dom, period, "iniValid", document.validFrom()); if (document.validTo() != null) text(dom, period, "fimValid", document.validTo());
-    var info = child(dom, event, "infoPGCC"); text(dom, info, "planoCtaRef", document.referenceChart()); text(dom, info, "freqEncerr", document.closingFrequency());
-    var accounts = child(dom, info, "infoContas");
-    for (var account : document.accounts()) appendAccount(dom, accounts, account);
+    if (document.operation() != 3) {
+      var info = child(dom, event, "infoPGCC"); text(dom, info, "planoCtaRef", document.referenceChart()); text(dom, info, "freqEncerr", document.closingFrequency());
+      var accounts = child(dom, info, "infoContas");
+      for (var account : document.accounts()) appendAccount(dom, accounts, account);
+    }
     return XmlSupport.serialize(dom);
   }
 

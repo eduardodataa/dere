@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<DeRE xmlns="http://www.dere.gov.br/schemas/evtInfoContrib/v1_0_1">
+    <evtInfoContrib id="DeRE10011234567820261001120000000000000004">
+        <ideEvento>
+            <tpOper>3</tpOper>
+            <motExcl>2</motExcl>
+            <tpAmb>2</tpAmb>
+            <aplicEmi>1</aplicEmi>
+            <verAplic>dere-poc/0.1</verAplic>
+        </ideEvento>
+        <ideContrib>
+            <nrInsc>01914904</nrInsc>
+        </ideContrib>
+        <idePeriodo>
+            <iniValid>2026-10-01</iniValid>
+        </idePeriodo>
+    </evtInfoContrib>
+</DeRE>

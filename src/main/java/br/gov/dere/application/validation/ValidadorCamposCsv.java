@@ -20,8 +20,10 @@ public final class ValidadorCamposCsv {
           "Arquivo sem cabeçalho. Exporte novamente no formato do leiaute " + leiaute + ".", ""));
       return criticas;
     }
+    var exclusao = exclusao(tabela);
     for (var regra : catalogo) {
       if (regra.obrigatorio() && !tabela.temColuna(regra.nome())) {
+        if (exclusao && grupoInformacao(regra)) continue;
         criticas.add(new Critica(arquivo, 1, regra.nome(), "", TipoCritica.ESTRUTURA, colunaEsperada(regra),
             "Coluna obrigatória ausente no cabeçalho.", regra.caminhoXml()));
       }
@@ -45,6 +47,7 @@ public final class ValidadorCamposCsv {
       var linha = tabela.linhas().get(i);
       for (var regra : catalogo) {
         if (!tabela.temColuna(regra.nome())) continue;
+        if ("3".equals(tabela.valor(linha, "tpOper")) && grupoInformacao(regra)) continue;
         if (i > 0 && regra.nivelEvento()) {
           var atual = tabela.valor(linha, regra.nome());
           var original = tabela.valor(primeira, regra.nome());
@@ -107,6 +110,16 @@ public final class ValidadorCamposCsv {
   private static String caminhoConta(String caminho, int indice) {
     if (caminho == null) return "";
     return caminho.replace("/infoConta/", "/infoConta[" + indice + "]/");
+  }
+
+  private static boolean exclusao(TabelaCsv tabela) {
+    if (!tabela.temColuna("tpOper") || tabela.linhas().isEmpty()) return false;
+    return tabela.linhas().stream().allMatch(linha -> "3".equals(tabela.valor(linha, "tpOper")));
+  }
+
+  private static boolean grupoInformacao(RegraCampo regra) {
+    var caminho = regra.caminhoXml() == null ? "" : regra.caminhoXml();
+    return caminho.contains("/infoContrib/") || caminho.contains("/infoPGCC/");
   }
 
   private static String colunaEsperada(RegraCampo regra) {
