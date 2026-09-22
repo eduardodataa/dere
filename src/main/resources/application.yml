@@ -9,9 +9,10 @@ spring:
   h2.console.enabled: ${DERE_H2_CONSOLE:false}
 dere:
   mock.enabled: ${DERE_MOCK_ENABLED:true}
-  certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY:local-poc-change-me}
+  certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY}
   environment: ${DERE_ENVIRONMENT:restricted-production}
   schema-version: ${DERE_SCHEMA_VERSION:nota_2026_001}
+  transmission.poll-delay-ms: ${DERE_TRANSMISSION_POLL_DELAY_MS:30000}
   api:
     base-url: ${DERE_BASE_URL:https://api.receitafederal.gov.br/prr-dere}
     token-url: ${RECEITA_INTEGRA_TOKEN_URL:https://api.receitafederal.gov.br/token}

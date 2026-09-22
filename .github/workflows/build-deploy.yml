@@ -1,0 +1,121 @@
+name: build-deploy
+
+on:
+  push:
+    branches:
+      - staging
+      - homologacao
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino
+        type: choice
+        options:
+          - staging
+          - homologacao
+          - production
+        default: production
+
+concurrency:
+  group: dere-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package application
+        run: |
+          mkdir -p src/main/resources/static
+          cp -r frontend/dist/. src/main/resources/static/
+          mvn -B -DskipTests package
+
+      - name: Resolve environment
+        id: env
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TARGET="${{ inputs.environment }}"
+          elif [ "${GITHUB_REF_NAME}" = "homologacao" ]; then
+            TARGET=homologacao
+          else
+            TARGET=staging
+          fi
+          if [ "$TARGET" = "production" ] && [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Deploy de produção só é permitido a partir da branch main"
+            exit 1
+          fi
+          case "$TARGET" in
+            staging)
+              echo "dir=/opt/apps/dere-staging/current" >> "$GITHUB_OUTPUT"
+              echo "unit=dere-staging.service" >> "$GITHUB_OUTPUT"
+              echo "port=8091" >> "$GITHUB_OUTPUT"
+              echo "target=staging" >> "$GITHUB_OUTPUT"
+              ;;
+            homologacao)
+              echo "dir=/opt/apps/dere-hml/current" >> "$GITHUB_OUTPUT"
+              echo "unit=dere-hml.service" >> "$GITHUB_OUTPUT"
+              echo "port=8092" >> "$GITHUB_OUTPUT"
+              echo "target=homologacao" >> "$GITHUB_OUTPUT"
+              ;;
+            production)
+              echo "dir=/opt/apps/dere/current" >> "$GITHUB_OUTPUT"
+              echo "unit=dere.service" >> "$GITHUB_OUTPUT"
+              echo "port=8090" >> "$GITHUB_OUTPUT"
+              echo "target=production" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Ambiente inválido: $TARGET"
+              exit 1
+              ;;
+          esac
+
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Add host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy JAR
+        run: scp target/dere-poc-0.0.1-SNAPSHOT.jar "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-poc-${GITHUB_RUN_ID}.jar"
+
+      - name: Restart service
+        run: |
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "set -euo pipefail
+          sudo cp /tmp/dere-poc-${GITHUB_RUN_ID}.jar ${{ steps.env.outputs.dir }}/dere-poc.jar
+          sudo chown ubuntu:ubuntu ${{ steps.env.outputs.dir }}/dere-poc.jar
+          rm -f /tmp/dere-poc-${GITHUB_RUN_ID}.jar
+          sudo systemctl restart ${{ steps.env.outputs.unit }}
+          for i in \$(seq 1 40); do
+            if curl -sf http://127.0.0.1:${{ steps.env.outputs.port }}/ >/dev/null; then
+              echo deployed ${{ steps.env.outputs.target }}
+              exit 0
+            fi
+            sleep 3
+          done
+          echo timeout waiting for ${{ steps.env.outputs.unit }}
+          sudo journalctl -u ${{ steps.env.outputs.unit }} -n 80 --no-pager
+          exit 1"

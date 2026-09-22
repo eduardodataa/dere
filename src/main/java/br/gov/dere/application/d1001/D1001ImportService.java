@@ -55,7 +55,7 @@ public class D1001ImportService {
         issues.add(new XmlSupport.Issue(0, 0, layout == null ? "" : layout, "erro",
             "Layout esperado: D-1001 (evtInfoContrib). Encontrado: " + (layout == null ? "desconhecido" : layout)));
       } else {
-        issues.addAll(XmlSupport.validateCollecting(document.xml(), xsd));
+        issues.addAll(XmlSupport.validateCollecting(XmlSupport.forSchemaValidation(document.xml()), xsd));
         try {
           parsed = converter.fromXml(document.xml());
           eventId = parsed.id();
@@ -75,7 +75,7 @@ public class D1001ImportService {
       files.add(new FileResult(document.name(), eventId, ok, parsed, issues));
     }
     jdbc.update("UPDATE dere_upload_batch SET valid_count=?, invalid_count=? WHERE id=?", valid, invalid, batchId);
-    return new ImportReport(batchId, "D-1001", source, documents.size(), valid, invalid, files, toCsv(files));
+    return new ImportReport(batchId, "D-1001", source, documents.size(), valid, invalid, files, toCsv(files), convertedCsv(files));
   }
 
   private List<NamedXml> extract(MultipartFile file, String source) throws Exception {
@@ -176,6 +176,20 @@ public class D1001ImportService {
   }
 
   public record FileResult(String fileName, String eventId, boolean valid, D1001 parsed, List<XmlSupport.Issue> issues) {}
-  public record ImportReport(long batchId, String layout, String sourceName, int fileCount, int validCount, int invalidCount, List<FileResult> files, String reportCsv) {}
+  private String convertedCsv(List<FileResult> files) {
+    var out = new StringBuilder();
+    for (FileResult file : files) {
+      if (file.parsed() == null) continue;
+      var csv = converter.toCsv(file.parsed());
+      if (out.isEmpty()) out.append(csv);
+      else {
+        var breakAt = csv.indexOf('\n');
+        if (breakAt >= 0 && breakAt + 1 < csv.length()) out.append('\n').append(csv.substring(breakAt + 1));
+      }
+    }
+    return out.toString();
+  }
+
+  public record ImportReport(long batchId, String layout, String sourceName, int fileCount, int validCount, int invalidCount, List<FileResult> files, String reportCsv, String convertedCsv) {}
   private record NamedXml(String name, String xml) {}
 }

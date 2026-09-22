@@ -35,6 +35,11 @@ public final class XmlSupport {
     catch (SAXException e) { throw e; } catch (Exception e) { throw new IllegalArgumentException("Falha ao carregar XSD", e); }
   }
   public static void validate(String xml, java.net.URL xsd) throws SAXException { try { validate(xml,new StreamSource(xsd.toExternalForm())); } catch(Exception e){if(e instanceof SAXException s)throw s;throw new IllegalArgumentException("Falha ao carregar XSD",e);} }
+  public static String forSchemaValidation(String xml) {
+    if (xml == null || xml.isBlank()) return "";
+    if (xml.contains("<Signature")) return xml;
+    return xml.replace("</DeRE>", "<Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\"></Signature></DeRE>");
+  }
   public static List<Issue> validateCollecting(String xml, java.net.URL xsd) {
     try {
       var source = new StreamSource(xsd.openStream());

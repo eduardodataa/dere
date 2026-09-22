@@ -7,7 +7,7 @@ Referência de planejamento: 02/09/2026. As datas abaixo são estimativas e deve
 | Fase | Janela sugerida | Entrega | Dependências |
 |---|---|---|---|
 | 0. Governança e escopo | 02–04/09/2026 | responsáveis, CNPJ raiz, eventos aplicáveis, dados-fonte | diretoria/contabilidade |
-| 1. POC local | 02–18/09/2026 | fluxo mockado, CSV/XML, assinatura de teste, relatórios | em execução |
+| 1. POC local | 02–18/09/2026 | fluxo mockado, CSV/XML, assinatura de teste, relatórios | concluída tecnicamente; ajustes finais de integração |
 | 2. Homologação técnica | 14–25/09/2026 | ambiente isolado, H2/MariaDB, CI, testes de carga e restore | infraestrutura |
 | 3. Acesso Receita Integra | 14–30/09/2026 | participação no piloto, procuração quando necessária, client_id/client_secret | representante legal |
 | 4. Certificados | 21–30/09/2026 | certificado ICP-Brasil de homologação, cofre/HSM, rotação | compras/segurança |
@@ -17,6 +17,30 @@ Referência de planejamento: 02/09/2026. As datas abaixo são estimativas e deve
 | 8. Fase 3 — Demais eventos | a partir de 01/01/2027 | eventos não incluídos nas fases 1 e 2 | leiautes, regras e aplicabilidade confirmados |
 
 ## Etapas detalhadas
+
+## Situação técnica após a POC
+
+### Entregas concluídas
+
+- D-1001 e D-1011 registrados no engine de layouts;
+- modelo canônico e conversões CSV/XML implementados;
+- validações estruturais, XSD e dependência D-1011 → D-1001 implementadas;
+- persistência de eventos, histórico, auditoria e tentativas de transmissão;
+- polling persistente com lease e backoff;
+- frontend inicial de dashboard, importações, validações e certificados;
+- cliente real preparado para OAuth 2.0, transmissão de lotes e consulta por protocolo;
+- tratamento inicial de códigos HTTP e parsing de retorno;
+- Maven e build frontend validados.
+
+### Próximas tarefas técnicas
+
+1. ligar o caso de uso de transmissão ao adaptador HTTP real por configuração explícita;
+2. validar payloads e retornos contra o ambiente autorizado;
+3. substituir certificado de teste por certificado ICP-Brasil de homologação;
+4. completar a tela de transmissões e o detalhamento de recibos/rejeições;
+5. adicionar testes de integração HTTP, timeout, retry, idempotência e polling;
+6. revisar configuração de secrets, observabilidade e retenção de XMLs;
+7. executar homologação ponta a ponta antes de qualquer uso produtivo.
 
 ## Calendário oficial de implantação considerado
 
