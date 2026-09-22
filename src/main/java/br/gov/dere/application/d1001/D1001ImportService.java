@@ -36,6 +36,12 @@ public class D1001ImportService {
     this.validacao = validacao;
   }
 
+  public void persistValidatedXml(Long userId, Long entityId, String sourceName, String xml) {
+    long batchId = insertBatch(userId, entityId, sourceName == null ? "simulado.xml" : sourceName, 1, xml == null ? 0 : xml.getBytes(StandardCharsets.UTF_8).length);
+    insertDocument(batchId, userId, entityId, new NamedXml(sourceName == null ? "simulado.xml" : sourceName, xml), true, "");
+    jdbc.update("UPDATE dere_upload_batch SET valid_count=?, invalid_count=? WHERE id=?", 1, 0, batchId);
+  }
+
   public RelatorioImportacao importFiles(MultipartFile file, Long userId, Long entityId) throws Exception {
     if (file.isEmpty()) throw new IllegalArgumentException("Arquivo vazio");
     String source = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xml");

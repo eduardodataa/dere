@@ -1,7 +1,7 @@
 spring:
   application.name: dere-poc
   datasource:
-    url: ${DERE_DB_URL:jdbc:mariadb://localhost:3306/dere}
+    url: ${DERE_DB_URL:jdbc:mariadb://localhost:3306/dere?maxAllowedPacket=67108864}
     username: ${DERE_DB_USERNAME:dere}
     password: ${DERE_DB_PASSWORD:dere}
   jpa.hibernate.ddl-auto: none
