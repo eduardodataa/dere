@@ -21,11 +21,18 @@ public final class XmlSupport {
   private static final Pattern FIELD = Pattern.compile("(?:element|elemento) '([^']+)'", Pattern.CASE_INSENSITIVE);
   private XmlSupport() {}
   public static String serialize(Document document) throws Exception {
+    return serialize(document, true);
+  }
+
+  public static String serialize(Document document, boolean indent) throws Exception {
     var tf = javax.xml.transform.TransformerFactory.newInstance();
     tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-    var transformer = tf.newTransformer(); transformer.setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8");
-    transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "yes");
-    var out = new StringWriter(); transformer.transform(new javax.xml.transform.dom.DOMSource(document), new javax.xml.transform.stream.StreamResult(out)); return out.toString();
+    var transformer = tf.newTransformer();
+    transformer.setOutputProperty(javax.xml.transform.OutputKeys.ENCODING, "UTF-8");
+    transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, indent ? "yes" : "no");
+    var out = new StringWriter();
+    transformer.transform(new javax.xml.transform.dom.DOMSource(document), new javax.xml.transform.stream.StreamResult(out));
+    return out.toString();
   }
   public static Document parse(String xml) throws Exception {
     var f = javax.xml.parsers.DocumentBuilderFactory.newInstance(); f.setNamespaceAware(true); f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true); f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true); return f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new StringReader(xml)));

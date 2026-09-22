@@ -18,6 +18,6 @@ public class DereXmlSigner {
     var ref=fac.newReference("#"+id, fac.newDigestMethod(DigestMethod.SHA256,null), java.util.List.of(fac.newTransform(Transform.ENVELOPED,(TransformParameterSpec)null),fac.newTransform(CanonicalizationMethod.INCLUSIVE,(TransformParameterSpec)null)),null,null);
     var ki=fac.getKeyInfoFactory().newKeyInfo(java.util.List.of(fac.getKeyInfoFactory().newX509Data(java.util.List.of(cert))));
     var sig=fac.newXMLSignature(fac.newSignedInfo(fac.newCanonicalizationMethod(CanonicalizationMethod.INCLUSIVE,(C14NMethodParameterSpec)null),fac.newSignatureMethod(SignatureMethod.RSA_SHA256,null),java.util.List.of(ref)),ki);
-    sig.sign(new DOMSignContext(key, doc.getDocumentElement())); return XmlSupport.serialize(doc);
+    sig.sign(new DOMSignContext(key, doc.getDocumentElement())); return XmlSupport.serialize(doc, false);
   }
 }
