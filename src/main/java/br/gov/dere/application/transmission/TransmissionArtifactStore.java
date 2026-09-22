@@ -14,7 +14,8 @@ public class TransmissionArtifactStore {
     if (conteudo == null || conteudo.getBytes(StandardCharsets.UTF_8).length <= LIMITE) return conteudo;
     try {
       Files.createDirectories(raiz);
-      var arquivo = raiz.resolve(seguro(chave) + "-" + tipo + ".xml");
+      var extensao = "csv".equals(tipo) ? ".csv" : ".xml";
+      var arquivo = raiz.resolve(seguro(chave) + "-" + tipo + extensao);
       Files.writeString(arquivo, conteudo, StandardCharsets.UTF_8);
       return "file:" + arquivo.toAbsolutePath();
     } catch (Exception ex) {

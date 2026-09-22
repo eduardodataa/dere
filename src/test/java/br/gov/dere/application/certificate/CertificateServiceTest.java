@@ -1,6 +1,7 @@
 package br.gov.dere.application.certificate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,6 +55,19 @@ class CertificateServiceTest {
     var loaded = service.loadForSigning(9L);
     assertEquals("dere-test", loaded.alias());
     assertTrue(loaded.keyStore().containsAlias("dere-test"));
+  }
+
+  @Test
+  void desativaCertificadoDaEntidade() throws Exception {
+    var repo = mock(DereEntityCertificateRepository.class);
+    when(repo.findByEntityIdAndActiveTrue(3L)).thenReturn(List.of());
+    when(repo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    var service = new CertificateService(repo, "local-poc-key-not-for-production");
+    var stored = service.save(3L, "A1 EFPC", p12(), "changeit");
+    when(repo.findById(9L)).thenReturn(Optional.of(stored));
+    service.delete(3L, 9L);
+    assertFalse(stored.isActive());
+    verify(repo, org.mockito.Mockito.atLeastOnce()).save(stored);
   }
 
   private static MockMultipartFile p12() throws Exception {

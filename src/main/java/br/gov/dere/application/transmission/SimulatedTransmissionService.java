@@ -114,9 +114,11 @@ public class SimulatedTransmissionService {
       var lote = new DereBatchBuilder().build(cnpj, List.of(assinado));
       var evento = new DereEventEntity(leiaute, identificador, environment, schemaVersion, null);
       evento.ownedBy(userId, entityId);
-      evento.source(arquivo, csvCurto(csv), true);
+      evento.source(arquivo, null, true);
       evento.operation(operacao(leiaute, xml));
       evento = events.saveAndFlush(evento);
+      evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), true);
+      events.saveAndFlush(evento);
       evento.unsigned(artefatos.guardar(identificador, "evento", xml));
       events.saveAndFlush(evento);
       evento.signed(artefatos.guardar(identificador, "assinado", assinado));
@@ -307,11 +309,6 @@ public class SimulatedTransmissionService {
   private static String hash(String xml) throws Exception {
     var digest = MessageDigest.getInstance("SHA-256").digest((xml == null ? "" : xml).getBytes(StandardCharsets.UTF_8));
     return Base64.getEncoder().encodeToString(digest);
-  }
-
-  private static String csvCurto(String csv) {
-    if (csv == null) return null;
-    return csv.getBytes(StandardCharsets.UTF_8).length > 200_000 ? null : csv;
   }
 
   private static String mensagem(Exception ex) {

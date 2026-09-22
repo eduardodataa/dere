@@ -38,6 +38,14 @@ public class CertificateService {
     return repo.save(entity);
   }
 
+  @Transactional
+  public void delete(Long entityId, Long id) {
+    var entity = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Certificado não encontrado"));
+    if (!entityId.equals(entity.getEntityId())) throw new IllegalArgumentException("Certificado de outra entidade");
+    entity.deactivate();
+    repo.save(entity);
+  }
+
   public LoadedCertificate loadForSigning(Long id) throws Exception {
     var entity = repo.findById(id).orElseThrow();
     if (!entity.isActive()) throw new IllegalStateException("Certificado inativo");
