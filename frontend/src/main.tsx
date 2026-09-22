@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import axios from 'axios';
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, Drawer, Grid, List, ListItemButton, ListItemText, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import './style.css';
+import logotipoDataA from './dataa-logotipo.png';
 
 const apiPrefix = (window.location.pathname.match(/^\/dere(?:-stg|-hml)?(?=\/|$)/) || [''])[0];
 const api = axios.create();
@@ -30,6 +31,15 @@ function baixar(nome, conteudo) {
   link.download = nome;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function rotuloCodificacao(codificacao) {
+  return codificacao === 'ANSI' ? 'windows-1252' : 'utf-8';
+}
+
+async function lerTextoArquivo(arquivo, codificacao) {
+  const bytes = await arquivo.arrayBuffer();
+  return new TextDecoder(rotuloCodificacao(codificacao)).decode(bytes);
 }
 
 function nomeXlsx(nome, leiaute) {
@@ -89,7 +99,7 @@ function App() {
   const currentEntity = entities.find(entity => entity.id === eid);
   const workspaceProps = { api, uid, eid, entities, setEid, setMessage };
   const certificateCard = <Card><CardContent><Stack spacing={2}><Typography variant="h6">Certificado A1</Typography><Typography color="text.secondary">A senha é usada somente durante a importação e não é exibida novamente.</Typography><TextField label="Nome" value={certLabel} onChange={event => setCertLabel(event.target.value)} /><Button component="label" variant="outlined">Selecionar P12/PFX<input hidden type="file" accept=".p12,.pfx" onChange={event => setCertFile(event.target.files?.[0])} /></Button><TextField label="Senha do certificado" type="password" value={certPassword} onChange={event => setCertPassword(event.target.value)} /><Button variant="contained" onClick={uploadCertificate}>Armazenar certificado</Button><Divider />{certificates.map(cert => <Box key={cert.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography>{cert.label} · {cert.alias}</Typography><Chip color={cert.status === 'VALID' ? 'success' : 'warning'} label={cert.status === 'EXPIRING_SOON' ? `vence em ${cert.daysUntilExpiry} dias` : cert.status} /></Box>)}</Stack></CardContent></Card>;
-  return <Box className="app-shell"><Drawer variant="permanent" className="sidebar"><Box className="brand"><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box><List>{menu.map(item => <ListItemButton selected={page === item} onClick={() => { setPage(item); setMessage(''); }} key={item}><ListItemText primary={item} /></ListItemButton>)}</List></Drawer><Box component="main" className="content"><Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}><Box><Typography variant="h4">{page}</Typography><Typography color="text.secondary">Operação local da declaração</Typography></Box><Chip label={currentEntity?.legalName || 'Entidade não selecionada'} /></Stack>{page === 'Dashboard' ? <Dashboard onImport={() => setPage('D-1001')} /> : null}<Box hidden={page !== 'D-1001'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1001" /></Box><Box hidden={page !== 'D-1011'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1011" /></Box>{page === 'Importações' ? <Alert severity="info">A conversão CSV/XML fica em D-1001 e D-1011. Este menu será o histórico de lotes (arquivo, layout, entidade, status e críticas).</Alert> : null}{page === 'Validações' ? <Alert severity="info">Validações será o relatório das críticas já apuradas nos lotes. A validação de um arquivo novo é feita no menu do layout.</Alert> : null}{page === 'Certificado Digital' ? certificateCard : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={load} setMessage={setMessage} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : !['Dashboard', 'Certificado Digital', 'Importações', 'Validações', ...workspacePages].includes(page) && !((page === 'Entidades' || page === 'Usuários') && master) ? <Alert severity="info">O módulo {page} está preparado para a próxima integração.</Alert> : null}{message && <Alert sx={{ mt: 2 }} severity="info">{message}</Alert>}</Box></Box>;
+  return <Box className="app-shell"><Drawer variant="permanent" className="sidebar"><Box className="brand"><img className="marca" src={logotipoDataA} alt="Data A" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box><List>{menu.map(item => <ListItemButton selected={page === item} onClick={() => { setPage(item); setMessage(''); }} key={item}><ListItemText primary={item} /></ListItemButton>)}</List></Drawer><Box component="main" className="content"><Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}><Box><Typography variant="h4">{page}</Typography><Typography color="text.secondary">Operação local da declaração</Typography></Box><Chip label={currentEntity?.legalName || 'Entidade não selecionada'} /></Stack>{page === 'Dashboard' ? <Dashboard onImport={() => setPage('D-1001')} /> : null}<Box hidden={page !== 'D-1001'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1001" /></Box><Box hidden={page !== 'D-1011'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1011" /></Box>{page === 'Importações' ? <Alert severity="info">A conversão CSV/XML fica em D-1001 e D-1011. Este menu será o histórico de lotes (arquivo, layout, entidade, status e críticas).</Alert> : null}{page === 'Validações' ? <Alert severity="info">Validações será o relatório das críticas já apuradas nos lotes. A validação de um arquivo novo é feita no menu do layout.</Alert> : null}{page === 'Certificado Digital' ? certificateCard : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={load} setMessage={setMessage} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : !['Dashboard', 'Certificado Digital', 'Importações', 'Validações', ...workspacePages].includes(page) && !((page === 'Entidades' || page === 'Usuários') && master) ? <Alert severity="info">O módulo {page} está preparado para a próxima integração.</Alert> : null}{message && <Alert sx={{ mt: 2 }} severity="info">{message}</Alert>}</Box></Box>;
 }
 
 function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLayout }) {
@@ -98,6 +108,8 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
   const [uploadResult, setUploadResult] = useState();
   const [csvResult, setCsvResult] = useState();
   const [csvText, setCsvText] = useState('');
+  const [arquivoCsv, setArquivoCsv] = useState();
+  const [codificacao, setCodificacao] = useState('UTF-8');
   const currentLayout = lockedLayout || layout;
   const critiques = (uploadResult?.arquivos || []).flatMap(arquivo => (arquivo.criticas || []).map(item => ({ arquivo: arquivo.nomeArquivo, idEvento: arquivo.idEvento, ...item })));
   const subtitle = lockedLayout === 'D-1001'
@@ -113,7 +125,6 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
         const xml = await file.text();
         const response = await api.post('/api/layouts/d1011/validate-xml', xml, { headers: { 'Content-Type': 'application/xml', 'X-Entity-Id': eid } });
         setCsvResult(response.data);
-        if (response.data.csv) setCsvText(response.data.csv);
         setUploadResult(undefined);
         setMessage(response.data.valido ? 'XML D-1011 validado.' : 'XML D-1011 possui críticas.');
         return;
@@ -127,7 +138,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
   }
 
   async function validateCsv() {
-    if (!csvText.trim()) { setMessage('Cole o conteúdo CSV ou carregue um arquivo.'); return; }
+    if (!csvText.trim()) { setMessage('Selecione um arquivo CSV.'); return; }
     try {
       const endpoint = currentLayout === 'D-1011' ? '/api/layouts/d1011/validate-csv' : '/api/validation/csv-to-xml';
       const response = await api.post(endpoint, csvText, { headers: { 'Content-Type': 'text/csv', 'X-Entity-Id': eid } });
@@ -136,32 +147,54 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     } catch (error) { setMessage(error.response?.data?.message || 'Falha na validação CSV'); }
   }
 
-  function clearWorkspace() {
+  function limparResultados() {
     setCsvResult(undefined);
     setUploadResult(undefined);
     setMessage('');
   }
 
+  function limparDados() {
+    limparResultados();
+    setFile(undefined);
+    setArquivoCsv(undefined);
+    setCsvText('');
+  }
+
+  async function aplicarCodificacao(arquivo, valor) {
+    if (!arquivo) return;
+    setCsvText(await lerTextoArquivo(arquivo, valor));
+    setCsvResult(undefined);
+    setUploadResult(undefined);
+  }
+
   function loadCsvFile(event) {
     const selected = event.target.files?.[0];
-    clearWorkspace();
+    limparResultados();
     setFile(undefined);
-    if (selected) selected.text().then(setCsvText);
+    setArquivoCsv(selected);
+    if (selected) aplicarCodificacao(selected, codificacao);
     else setCsvText('');
     event.target.value = '';
   }
 
   function loadXmlFile(event) {
     const selected = event.target.files?.[0];
-    clearWorkspace();
+    limparResultados();
     setCsvText('');
+    setArquivoCsv(undefined);
     setFile(selected);
     event.target.value = '';
   }
 
+  function alterarCodificacao(valor) {
+    setCodificacao(valor);
+    if (arquivoCsv) aplicarCodificacao(arquivoCsv, valor);
+  }
+
   const criticasCsv = csvResult?.criticas || [];
   const criticasXml = uploadResult?.criticas || critiques;
-  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">Importação e validação</Typography><Typography color="text.secondary">{subtitle}</Typography>{!lockedLayout && <TextField select label="Leiaute" value={layout} onChange={event => { setLayout(event.target.value); setCsvResult(undefined); setUploadResult(undefined); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem></TextField>}<TextField select fullWidth label="Entidade" value={eid} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><Stack direction="row" spacing={2}><Button component="label" variant="outlined">Selecionar CSV<input hidden type="file" accept=".csv" onChange={loadCsvFile} /></Button><Button component="label" variant="outlined">Selecionar XML/ZIP<input hidden type="file" accept=".xml,.zip" onChange={loadXmlFile} /></Button></Stack><TextField className="resizable-preview" multiline rows={7} label="Conteúdo CSV" value={csvText} onChange={event => setCsvText(event.target.value)} /><Stack direction="row" spacing={2}><Button variant="contained" onClick={validateCsv}>Validar CSV</Button><Button variant="contained" color="secondary" onClick={uploadXml}>Processar XML/ZIP</Button></Stack>{csvResult && <ResumoResultado resultado={csvResult} rotuloDownload="Baixar XML" aoBaixar={csvResult.xml ? () => baixar(`${currentLayout.toLowerCase()}.xml`, csvResult.xml) : undefined} aoRelatorio={csvResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || 'arquivo.csv', currentLayout), csvResult.relatorioXlsx) : undefined} criticas={criticasCsv} />}{uploadResult && <ResumoResultado resultado={uploadResult} rotuloDownload="Baixar CSV" aoBaixar={uploadResult.csvConvertido ? () => baixar(nomeCsvDaOrigem(file?.name || uploadResult.nomeOrigem), uploadResult.csvConvertido) : undefined} aoRelatorio={uploadResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || uploadResult.nomeOrigem, currentLayout), uploadResult.relatorioXlsx) : undefined} criticas={criticasXml} />}</Stack></CardContent></Card>;
+  const nomeArquivo = arquivoCsv?.name || file?.name;
+  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">Importação e validação</Typography><Typography color="text.secondary">{subtitle}</Typography>{!lockedLayout && <TextField select label="Leiaute" value={layout} onChange={event => { setLayout(event.target.value); setCsvResult(undefined); setUploadResult(undefined); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem></TextField>}<TextField select fullWidth label="Entidade" value={eid} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap><Button component="label" variant="outlined">Selecionar CSV<input hidden type="file" accept=".csv" onChange={loadCsvFile} /></Button><Button component="label" variant="outlined">Selecionar XML/ZIP<input hidden type="file" accept=".xml,.zip" onChange={loadXmlFile} /></Button><TextField select label="Codificação" value={codificacao} onChange={event => alterarCodificacao(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="UTF-8">UTF-8</MenuItem><MenuItem value="ANSI">ANSI</MenuItem></TextField><Button variant="outlined" color="inherit" onClick={limparDados} disabled={!nomeArquivo && !csvResult && !uploadResult}>Limpar dados</Button></Stack>{nomeArquivo ? <Typography color="text.secondary">Arquivo: {nomeArquivo}{arquivoCsv ? ` · ${codificacao}` : ''}</Typography> : <Typography color="text.secondary">Nenhum arquivo selecionado.</Typography>}<Stack direction="row" spacing={2}><Button variant="contained" onClick={validateCsv}>Validar CSV</Button><Button variant="contained" color="secondary" onClick={uploadXml}>Processar XML/ZIP</Button></Stack>{csvResult && <ResumoResultado resultado={csvResult} rotuloDownload="Baixar XML" aoBaixar={csvResult.xml ? () => baixar(`${currentLayout.toLowerCase()}.xml`, csvResult.xml) : undefined} aoRelatorio={csvResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(arquivoCsv?.name || file?.name || 'arquivo.csv', currentLayout), csvResult.relatorioXlsx) : undefined} criticas={criticasCsv} />}{uploadResult && <ResumoResultado resultado={uploadResult} rotuloDownload="Baixar CSV" aoBaixar={uploadResult.csvConvertido ? () => baixar(nomeCsvDaOrigem(file?.name || uploadResult.nomeOrigem), uploadResult.csvConvertido) : undefined} aoRelatorio={uploadResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || uploadResult.nomeOrigem, currentLayout), uploadResult.relatorioXlsx) : undefined} criticas={criticasXml} />}</Stack></CardContent></Card>;
 }
 
 function Dashboard({ onImport }) { return <><Grid container spacing={2} mb={3}><Grid item xs={12} md={4}><Metric title="Layouts ativos" value="2" detail="D-1001 e D-1011" /></Grid><Grid item xs={12} md={4}><Metric title="Importações" value="Pronto" detail="CSV e XML" /></Grid><Grid item xs={12} md={4}><Metric title="Transmissões" value="Mock local" detail="Integração controlada" /></Grid></Grid><Card><CardContent><Stack spacing={2}><Typography variant="h6">Comece uma operação</Typography><Typography color="text.secondary">Importe um arquivo, valide o modelo canônico e acompanhe as críticas por campo.</Typography><Button variant="contained" onClick={onImport}>Nova importação</Button></Stack></CardContent></Card></>; }
