@@ -24,11 +24,7 @@ public final class PlanilhaValidacao {
   public static byte[] bytes(RelatorioValidacao relatorio) {
     try (var planilha = new XSSFWorkbook(); var saida = new ByteArrayOutputStream()) {
       var cabecalho = estiloCabecalho(planilha);
-      var titulo = estiloTitulo(planilha);
-      var rotulo = estiloRotulo(planilha);
-      var corpo = estiloCorpo(planilha);
       var quebra = estiloQuebra(planilha);
-      resumo(planilha, relatorio, titulo, rotulo, corpo, cabecalho);
       criticas(planilha, relatorio, cabecalho, quebra, estilosTipo(planilha));
       planilha.write(saida);
       return saida.toByteArray();
@@ -37,98 +33,40 @@ public final class PlanilhaValidacao {
     }
   }
 
-  private static void resumo(XSSFWorkbook planilha, RelatorioValidacao relatorio, XSSFCellStyle titulo, XSSFCellStyle rotulo, XSSFCellStyle corpo, XSSFCellStyle cabecalho) {
-    var aba = planilha.createSheet("Resumo");
-    var linha = 0;
-    var destaque = aba.createRow(linha++);
-    destaque.createCell(0).setCellValue("Relatório de validação DeRE");
-    destaque.getCell(0).setCellStyle(titulo);
-    aba.addMergedRegion(new CellRangeAddress(0, 0, 0, 1));
-    linha++;
-    preencher(aba, linha++, "Resultado", relatorio.valido() ? "Válido — nenhuma crítica" : "Inválido — há críticas para correção", rotulo, corpo);
-    preencher(aba, linha++, "Leiaute", relatorio.leiaute(), rotulo, corpo);
-    preencher(aba, linha++, "Origem", relatorio.origem(), rotulo, corpo);
-    preencher(aba, linha++, "Arquivo", relatorio.arquivo(), rotulo, corpo);
-    preencher(aba, linha++, "Linhas analisadas", String.valueOf(relatorio.totalLinhas()), rotulo, corpo);
-    preencher(aba, linha++, "Linhas com problema", String.valueOf(relatorio.linhasComProblema()), rotulo, corpo);
-    preencher(aba, linha++, "Total de críticas", String.valueOf(relatorio.criticas().size()), rotulo, corpo);
-    linha++;
-    var contagens = new LinkedHashMap<TipoCritica, Integer>();
-    for (var tipo : TipoCritica.values()) contagens.put(tipo, 0);
-    relatorio.criticas().forEach(item -> contagens.merge(item.tipo(), 1, Integer::sum));
-    var cab = aba.createRow(linha++);
-    cab.createCell(0).setCellValue("Tipo de problema");
-    cab.createCell(1).setCellValue("Quantidade");
-    cab.getCell(0).setCellStyle(cabecalho);
-    cab.getCell(1).setCellStyle(cabecalho);
-    for (var entrada : contagens.entrySet()) {
-      if (entrada.getValue() == 0 && relatorio.valido()) continue;
-      var item = aba.createRow(linha++);
-      item.createCell(0).setCellValue(entrada.getKey().rotulo());
-      item.createCell(1).setCellValue(entrada.getValue());
-      item.getCell(0).setCellStyle(corpo);
-      item.getCell(1).setCellStyle(corpo);
-    }
-    linha++;
-    var dica = aba.createRow(linha);
-    dica.createCell(0).setCellValue("Abra a aba Críticas e filtre por Linha, Coluna ou Tipo. Cada linha indica o valor encontrado e o que o leiaute espera.");
-    dica.getCell(0).setCellStyle(corpo);
-    aba.addMergedRegion(new CellRangeAddress(linha, linha, 0, 1));
-    aba.setColumnWidth(0, 8000);
-    aba.setColumnWidth(1, 18000);
-  }
-
   private static void criticas(XSSFWorkbook planilha, RelatorioValidacao relatorio, XSSFCellStyle cabecalho, XSSFCellStyle quebra, java.util.Map<TipoCritica, XSSFCellStyle> tipos) {
     var aba = planilha.createSheet("Criticas");
-    var titulos = List.of("Arquivo", "Linha", "Coluna", "Tipo", "Valor encontrado", "Valor esperado", "Como corrigir", "Caminho XML");
+    var titulos = List.of("Linha", "Coluna", "Tipo", "Encontrado", "Esperado", "Como corrigir");
     var cab = aba.createRow(0);
     for (int i = 0; i < titulos.size(); i++) {
       cab.createCell(i).setCellValue(titulos.get(i));
       cab.getCell(i).setCellStyle(cabecalho);
     }
     var ordenadas = relatorio.criticas().stream()
-        .sorted(java.util.Comparator.comparing((Critica item) -> item.arquivo() == null ? "" : item.arquivo())
-            .thenComparing(item -> item.linha() == null ? Integer.MAX_VALUE : item.linha())
+        .sorted(java.util.Comparator.comparing((Critica item) -> item.linha() == null ? Integer.MAX_VALUE : item.linha())
             .thenComparing(item -> item.coluna() == null ? "" : item.coluna()))
         .toList();
     int indice = 1;
     for (var item : ordenadas) {
       var linha = aba.createRow(indice++);
       var estilo = tipos.getOrDefault(item.tipo(), quebra);
-      preencher(linha, 0, item.arquivo(), estilo);
-      if (item.linha() != null) linha.createCell(1).setCellValue(item.linha());
-      else linha.createCell(1).setCellValue("");
-      linha.getCell(1).setCellStyle(estilo);
-      preencher(linha, 2, item.coluna(), estilo);
-      preencher(linha, 3, item.rotuloTipo(), estilo);
-      preencher(linha, 4, item.valorEncontrado(), estilo);
-      preencher(linha, 5, item.valorEsperado(), estilo);
-      preencher(linha, 6, item.problema(), estilo);
-      preencher(linha, 7, item.caminhoXml(), estilo);
+      if (item.linha() != null) linha.createCell(0).setCellValue(item.linha());
+      else linha.createCell(0).setCellValue("");
+      linha.getCell(0).setCellStyle(estilo);
+      preencher(linha, 1, item.coluna() == null || item.coluna().isBlank() ? "Documento" : item.coluna(), estilo);
+      preencher(linha, 2, item.rotuloTipo(), estilo);
+      preencher(linha, 3, item.valorEncontrado(), estilo);
+      preencher(linha, 4, item.valorEsperado(), estilo);
+      preencher(linha, 5, item.problema(), estilo);
       linha.setHeightInPoints(36);
-    }
-    if (ordenadas.isEmpty()) {
-      var linha = aba.createRow(1);
-      preencher(linha, 0, "Nenhuma crítica", quebra);
     }
     aba.setAutoFilter(new CellRangeAddress(0, Math.max(1, ordenadas.size()), 0, titulos.size() - 1));
     aba.createFreezePane(0, 1);
-    aba.setColumnWidth(0, 7000);
-    aba.setColumnWidth(1, 2500);
-    aba.setColumnWidth(2, 5500);
-    aba.setColumnWidth(3, 5000);
-    aba.setColumnWidth(4, 6000);
-    aba.setColumnWidth(5, 14000);
-    aba.setColumnWidth(6, 16000);
-    aba.setColumnWidth(7, 14000);
-  }
-
-  private static void preencher(org.apache.poi.ss.usermodel.Sheet aba, int indice, String chave, String valor, XSSFCellStyle rotulo, XSSFCellStyle corpo) {
-    var linha = aba.createRow(indice);
-    linha.createCell(0).setCellValue(chave);
-    linha.createCell(1).setCellValue(valor == null ? "" : valor);
-    linha.getCell(0).setCellStyle(rotulo);
-    linha.getCell(1).setCellStyle(corpo);
+    aba.setColumnWidth(0, 2500);
+    aba.setColumnWidth(1, 5500);
+    aba.setColumnWidth(2, 5000);
+    aba.setColumnWidth(3, 6000);
+    aba.setColumnWidth(4, 14000);
+    aba.setColumnWidth(5, 16000);
   }
 
   private static void preencher(org.apache.poi.ss.usermodel.Row linha, int coluna, String valor, XSSFCellStyle estilo) {
@@ -146,24 +84,6 @@ public final class PlanilhaValidacao {
     estilo.setFillPattern(FillPatternType.SOLID_FOREGROUND);
     estilo.setAlignment(HorizontalAlignment.LEFT);
     estilo.setVerticalAlignment(VerticalAlignment.CENTER);
-    bordas(estilo);
-    return estilo;
-  }
-
-  private static XSSFCellStyle estiloTitulo(XSSFWorkbook planilha) {
-    var estilo = planilha.createCellStyle();
-    var fonte = planilha.createFont();
-    fonte.setBold(true);
-    fonte.setFontHeightInPoints((short) 16);
-    estilo.setFont(fonte);
-    return estilo;
-  }
-
-  private static XSSFCellStyle estiloRotulo(XSSFWorkbook planilha) {
-    var estilo = planilha.createCellStyle();
-    var fonte = planilha.createFont();
-    fonte.setBold(true);
-    estilo.setFont(fonte);
     bordas(estilo);
     return estilo;
   }

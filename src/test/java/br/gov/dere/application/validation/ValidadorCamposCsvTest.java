@@ -76,13 +76,16 @@ class ValidadorCamposCsvTest {
     var criticas = ValidadorCamposCsv.validar("D-1001", "rel.csv", csv);
     var relatorio = RelatorioValidacao.de("D-1001", "CSV", "rel.csv", 1, criticas);
     try (var planilha = new XSSFWorkbook(new ByteArrayInputStream(PlanilhaValidacao.bytes(relatorio)))) {
-      assertEquals("Resumo", planilha.getSheetAt(0).getSheetName());
-      assertEquals("Criticas", planilha.getSheetAt(1).getSheetName());
-      var aba = planilha.getSheetAt(1);
-      assertEquals("Linha", aba.getRow(0).getCell(1).getStringCellValue());
-      assertEquals("Coluna", aba.getRow(0).getCell(2).getStringCellValue());
+      assertEquals("Criticas", planilha.getSheetAt(0).getSheetName());
+      var aba = planilha.getSheetAt(0);
+      assertEquals("Linha", aba.getRow(0).getCell(0).getStringCellValue());
+      assertEquals("Coluna", aba.getRow(0).getCell(1).getStringCellValue());
+      assertEquals("Tipo", aba.getRow(0).getCell(2).getStringCellValue());
+      assertEquals("Encontrado", aba.getRow(0).getCell(3).getStringCellValue());
+      assertEquals("Esperado", aba.getRow(0).getCell(4).getStringCellValue());
+      assertEquals("Como corrigir", aba.getRow(0).getCell(5).getStringCellValue());
       var colunas = new java.util.ArrayList<String>();
-      for (int i = 1; i <= aba.getLastRowNum(); i++) colunas.add(aba.getRow(i).getCell(2).getStringCellValue());
+      for (int i = 1; i <= aba.getLastRowNum(); i++) colunas.add(aba.getRow(i).getCell(1).getStringCellValue());
       assertTrue(colunas.contains("id"));
       assertTrue(colunas.contains("tpOper"));
     }
