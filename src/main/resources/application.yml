@@ -10,6 +10,10 @@ spring:
 dere:
   mock.enabled: ${DERE_MOCK_ENABLED:true}
   certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY}
+  certificate.password-store: ${DERE_CERTIFICATE_PASSWORD_STORE:local}
+  certificate.secret-dir: ${DERE_CERTIFICATE_SECRET_DIR:data/cert-secrets}
+  certificate.secret-prefix: ${DERE_CERTIFICATE_SECRET_PREFIX:dere/cert}
+  certificate.kms-key-id: ${DERE_CERTIFICATE_KMS_KEY_ID:}
   environment: ${DERE_ENVIRONMENT:restricted-production}
   schema-version: ${DERE_SCHEMA_VERSION:nota_2026_001}
   transmission.poll-delay-ms: ${DERE_TRANSMISSION_POLL_DELAY_MS:30000}
