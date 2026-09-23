@@ -12,7 +12,7 @@ public final class ValidadorCamposCsv {
   private ValidadorCamposCsv() {}
 
   public static List<Critica> validar(String leiaute, String arquivo, String csv) {
-    var catalogo = "D-1011".equals(leiaute) ? CatalogosCampo.d1011() : CatalogosCampo.d1001();
+    var catalogo = catalogo(leiaute);
     var tabela = TabelaCsv.analisar(csv);
     var criticas = new ArrayList<Critica>();
     if (tabela.cabecalhos().isEmpty()) {
@@ -68,7 +68,7 @@ public final class ValidadorCamposCsv {
         }
       }
       adicionarOrdemDatas(criticas, arquivo, linha.numero(), tabela, "iniValid", "fimValid",
-          "/DeRE/" + ("D-1011".equals(leiaute) ? "evtPGCC" : "evtInfoContrib") + "/idePeriodo/fimValid");
+          "/DeRE/" + evento(leiaute) + "/idePeriodo/fimValid");
       if ("D-1001".equals(leiaute)) {
         adicionarOrdemDatas(criticas, arquivo, linha.numero(), tabela, "novaValidadeIniValid", "novaValidadeFimValid",
             "/DeRE/evtInfoContrib/idePeriodo/novaValidade/fimValid");
@@ -78,10 +78,9 @@ public final class ValidadorCamposCsv {
             caminhoConta("/DeRE/evtPGCC/infoPGCC/infoContas/infoConta/fimVig", i + 1));
       }
       if ("3".equals(tabela.valor(linha, "tpOper")) && tabela.valor(linha, "motExcl").isBlank()) {
-        var caminho = "D-1011".equals(leiaute) ? "/DeRE/evtPGCC/ideEvento/motExcl" : "/DeRE/evtInfoContrib/ideEvento/motExcl";
         criticas.add(new Critica(arquivo, linha.numero(), "motExcl", "", TipoCritica.OBRIGATORIO,
             CatalogosCampo.formatarDominio(CatalogosCampo.MOT_EXCL),
-            "Obrigatório quando tpOper = 3 (Exclusão).", caminho));
+            "Obrigatório quando tpOper = 3 (Exclusão).", "/DeRE/" + evento(leiaute) + "/ideEvento/motExcl"));
       }
     }
     return criticas;
@@ -117,9 +116,24 @@ public final class ValidadorCamposCsv {
     return tabela.linhas().stream().allMatch(linha -> "3".equals(tabela.valor(linha, "tpOper")));
   }
 
+  private static List<RegraCampo> catalogo(String leiaute) {
+    if ("D-1011".equals(leiaute)) return CatalogosCampo.d1011();
+    if ("D-1101".equals(leiaute)) return CatalogosCampo.d1101();
+    if ("D-1199".equals(leiaute)) return CatalogosCampo.d1199();
+    return CatalogosCampo.d1001();
+  }
+
+  private static String evento(String leiaute) {
+    if ("D-1011".equals(leiaute)) return "evtPGCC";
+    if ("D-1101".equals(leiaute)) return "evtBalancete";
+    if ("D-1199".equals(leiaute)) return "evtFechMensal";
+    return "evtInfoContrib";
+  }
+
   private static boolean grupoInformacao(RegraCampo regra) {
     var caminho = regra.caminhoXml() == null ? "" : regra.caminhoXml();
-    return caminho.contains("/infoContrib/") || caminho.contains("/infoPGCC/");
+    return caminho.contains("/infoContrib/") || caminho.contains("/infoPGCC/")
+        || caminho.contains("/infoBalancete/") || caminho.contains("/infoFechamento/");
   }
 
   private static String colunaEsperada(RegraCampo regra) {

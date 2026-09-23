@@ -4,6 +4,8 @@ import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.certificate.CertificateService;
 import br.gov.dere.application.csv.DereCsvConverter;
 import br.gov.dere.application.d1001.D1001ImportService;
+import br.gov.dere.application.periodico.D1101CsvConverter;
+import br.gov.dere.application.periodico.D1199CsvConverter;
 import br.gov.dere.application.pgcc.D1011CsvConverter;
 import br.gov.dere.application.validation.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validation.relatorio.Critica;
@@ -57,6 +59,8 @@ public class SimulatedTransmissionService {
   private final DereXmlSignatureVerifier verifier = new DereXmlSignatureVerifier();
   private final DereCsvConverter csvD1001 = new DereCsvConverter();
   private final D1011CsvConverter csvD1011 = new D1011CsvConverter();
+  private final D1101CsvConverter csvD1101 = new D1101CsvConverter();
+  private final D1199CsvConverter csvD1199 = new D1199CsvConverter();
 
   public SimulatedTransmissionService(
       @Value("${dere.mock.enabled:true}") boolean mockEnabled,
@@ -216,6 +220,7 @@ public class SimulatedTransmissionService {
         evento.getId(),
         evento.getEventType(),
         evento.getSourceName(),
+        evento.getOperationType(),
         evento.getEventIdentifier(),
         batch == null ? null : batch.getProtocol(),
         evento.getReceiptNumber(),
@@ -258,13 +263,18 @@ public class SimulatedTransmissionService {
   private static String normalizarLeiaute(String layout) {
     if (layout == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Leiaute obrigatório");
     var valor = layout.trim().toUpperCase();
-    if (!"D-1001".equals(valor) && !"D-1011".equals(valor)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Leiaute não suportado no envio simulado");
+    if (!"D-1001".equals(valor) && !"D-1011".equals(valor) && !"D-1101".equals(valor) && !"D-1199".equals(valor)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Leiaute não suportado no envio simulado");
+    }
     return valor;
   }
 
   private String identificador(String leiaute, String xml) {
     try {
-      return "D-1011".equals(leiaute) ? csvD1011.fromXml(xml).id() : csvD1001.fromXml(xml).id();
+      if ("D-1011".equals(leiaute)) return csvD1011.fromXml(xml).id();
+      if ("D-1101".equals(leiaute)) return csvD1101.fromXml(xml).id();
+      if ("D-1199".equals(leiaute)) return csvD1199.fromXml(xml).id();
+      return csvD1001.fromXml(xml).id();
     } catch (Exception ex) {
       throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Não foi possível ler o id do evento", ex);
     }
@@ -272,7 +282,10 @@ public class SimulatedTransmissionService {
 
   private String operacao(String leiaute, String xml) {
     try {
-      return String.valueOf("D-1011".equals(leiaute) ? csvD1011.fromXml(xml).operation() : csvD1001.fromXml(xml).operation());
+      if ("D-1011".equals(leiaute)) return String.valueOf(csvD1011.fromXml(xml).operation());
+      if ("D-1101".equals(leiaute)) return String.valueOf(csvD1101.fromXml(xml).operation());
+      if ("D-1199".equals(leiaute)) return String.valueOf(csvD1199.fromXml(xml).operation());
+      return String.valueOf(csvD1001.fromXml(xml).operation());
     } catch (Exception ex) {
       return null;
     }
@@ -284,11 +297,22 @@ public class SimulatedTransmissionService {
         var modelo = csvD1011.fromXml(xml);
         return new LocalDate[] { modelo.validFrom(), modelo.validTo() };
       }
+      if ("D-1101".equals(leiaute)) {
+        return new LocalDate[] { inicioPeriodo(csvD1101.fromXml(xml).period()), null };
+      }
+      if ("D-1199".equals(leiaute)) {
+        return new LocalDate[] { inicioPeriodo(csvD1199.fromXml(xml).period()), null };
+      }
       var modelo = csvD1001.fromXml(xml);
       return new LocalDate[] { modelo.validFrom(), modelo.validTo() };
     } catch (Exception ex) {
       return new LocalDate[] { LocalDate.now(ZoneOffset.UTC), null };
     }
+  }
+
+  private static LocalDate inicioPeriodo(String perApur) {
+    if (perApur == null || perApur.length() < 7) return LocalDate.now(ZoneOffset.UTC);
+    return LocalDate.parse(perApur + "-01");
   }
 
   private RelatorioValidacao comCritica(RelatorioValidacao base, String arquivo, String coluna, String valor, String esperado, String problema) {

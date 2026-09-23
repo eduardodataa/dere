@@ -2,6 +2,10 @@ package br.gov.dere.application.validation;
 
 import br.gov.dere.application.csv.DereCsvConverter;
 import br.gov.dere.application.d1001.D1001XmlGenerator;
+import br.gov.dere.application.periodico.D1101CsvConverter;
+import br.gov.dere.application.periodico.D1101XmlGenerator;
+import br.gov.dere.application.periodico.D1199CsvConverter;
+import br.gov.dere.application.periodico.D1199XmlGenerator;
 import br.gov.dere.application.pgcc.D1011CsvConverter;
 import br.gov.dere.application.pgcc.D1011XmlGenerator;
 import br.gov.dere.application.validation.catalogo.CatalogosCampo;
@@ -25,14 +29,21 @@ import org.w3c.dom.Node;
 public class ServicoValidacaoLeiaute {
   private static final String XSD_D1001 = "/dere/schemas/nota_2026_001/xsd/evtInfoContrib-v1_0_1.xsd";
   private static final String XSD_D1011 = "/dere/schemas/v1_1_0/xsd/06-XSD-D-1011 (v. 1.0.1).xsd";
+  private static final String XSD_D1101 = "/dere/schemas/v1_1_0/xsd/06-XSD-D-1101 (v. 0.0.1).xsd";
   private final DereCsvConverter csvD1001 = new DereCsvConverter();
   private final D1001XmlGenerator xmlD1001 = new D1001XmlGenerator();
   private final D1011CsvConverter csvD1011 = new D1011CsvConverter();
   private final D1011XmlGenerator xmlD1011 = new D1011XmlGenerator();
+  private final D1101CsvConverter csvD1101 = new D1101CsvConverter();
+  private final D1101XmlGenerator xmlD1101 = new D1101XmlGenerator();
+  private final D1199CsvConverter csvD1199 = new D1199CsvConverter();
+  private final D1199XmlGenerator xmlD1199 = new D1199XmlGenerator();
   private final D1011DependencyValidator dependencias;
+  private final ChaveEventoTabelaValidator chaves;
 
-  public ServicoValidacaoLeiaute(D1011DependencyValidator dependencias) {
+  public ServicoValidacaoLeiaute(D1011DependencyValidator dependencias, ChaveEventoTabelaValidator chaves) {
     this.dependencias = dependencias;
+    this.chaves = chaves;
   }
 
   public RelatorioValidacao validarCsv(String leiaute, String csv, String nomeArquivo, String cnpjEsperado, Long idEntidade) {
@@ -52,11 +63,22 @@ public class ServicoValidacaoLeiaute {
         xml = xmlD1011.generate(modelo);
         adicionarXsd(criticas, arquivo, xml, XSD_D1011, CatalogosCampo.d1011());
         adicionarDependencias(criticas, arquivo, modelo, idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
+        adicionarChave(criticas, arquivo, leiaute, modelo.operation(), modelo.cnpjRoot(), modelo.validFrom(), modelo.validTo(), idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
+      } else if ("D-1101".equals(leiaute)) {
+        var modelo = csvD1101.fromCsv(csv);
+        canonico = csvD1101.toCsv(modelo);
+        xml = xmlD1101.generate(modelo);
+        adicionarXsd(criticas, arquivo, xml, XSD_D1101, CatalogosCampo.d1101());
+      } else if ("D-1199".equals(leiaute)) {
+        var modelo = csvD1199.fromCsv(csv);
+        canonico = csvD1199.toCsv(modelo);
+        xml = xmlD1199.generate(modelo);
       } else {
         var modelo = csvD1001.fromCsv(csv);
         canonico = csvD1001.toCsv(modelo);
         xml = xmlD1001.generate(modelo);
         adicionarXsd(criticas, arquivo, xml, XSD_D1001, CatalogosCampo.d1001());
+        adicionarChave(criticas, arquivo, leiaute, modelo.operation(), modelo.cnpjRoot(), modelo.validFrom(), modelo.validTo(), idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
       }
     } catch (Exception ex) {
       if (criticas.isEmpty()) {
@@ -70,15 +92,15 @@ public class ServicoValidacaoLeiaute {
   public RelatorioValidacao validarXml(String leiaute, String xml, String nomeArquivo, String cnpjEsperado, Long idEntidade) {
     var arquivo = vazioPara(nomeArquivo, "arquivo.xml");
     var criticas = new ArrayList<Critica>();
-    var eventoEsperado = "D-1011".equals(leiaute) ? "evtPGCC" : "evtInfoContrib";
+    var eventoEsperado = evento(leiaute);
     var detectado = detectar(xml);
     if (detectado != null && !eventoEsperado.equals(detectado)) {
       criticas.add(new Critica(arquivo, 1, "Documento", detectado, TipoCritica.ESTRUTURA, eventoEsperado,
           "Leiaute esperado: " + leiaute + " (" + eventoEsperado + "). Encontrado: " + detectado + ".", "/DeRE"));
     }
-    var catalogo = "D-1011".equals(leiaute) ? CatalogosCampo.d1011() : CatalogosCampo.d1001();
-    var xsd = "D-1011".equals(leiaute) ? XSD_D1011 : XSD_D1001;
-    adicionarXsd(criticas, arquivo, xml, xsd, catalogo);
+    if (!"D-1199".equals(leiaute)) {
+      adicionarXsd(criticas, arquivo, xml, xsd(leiaute), catalogo(leiaute));
+    }
     var csv = "";
     var quantidadeLinhas = 0;
     try {
@@ -92,6 +114,25 @@ public class ServicoValidacaoLeiaute {
           ValidadorCamposCsv.adicionarDivergenciaCnpj(criticas, arquivo, tabela.linhas().get(0).numero(), tabela.valor(tabela.linhas().get(0), "nrInsc"), cnpjEsperado, caminhoNrInsc(leiaute));
         }
         adicionarDependencias(criticas, arquivo, modelo, idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
+        adicionarChave(criticas, arquivo, leiaute, modelo.operation(), modelo.cnpjRoot(), modelo.validFrom(), modelo.validTo(), idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
+      } else if ("D-1101".equals(leiaute)) {
+        var modelo = csvD1101.fromXml(xml);
+        csv = csvD1101.toCsv(modelo);
+        mesclarAusentes(criticas, ValidadorCamposCsv.validar(leiaute, arquivo, csv));
+        var tabela = TabelaCsv.analisar(csv);
+        quantidadeLinhas = tabela.linhas().size();
+        if (!tabela.linhas().isEmpty()) {
+          ValidadorCamposCsv.adicionarDivergenciaCnpj(criticas, arquivo, tabela.linhas().get(0).numero(), tabela.valor(tabela.linhas().get(0), "nrInsc"), cnpjEsperado, caminhoNrInsc(leiaute));
+        }
+      } else if ("D-1199".equals(leiaute)) {
+        var modelo = csvD1199.fromXml(xml);
+        csv = csvD1199.toCsv(modelo);
+        mesclarAusentes(criticas, ValidadorCamposCsv.validar(leiaute, arquivo, csv));
+        var tabela = TabelaCsv.analisar(csv);
+        quantidadeLinhas = tabela.linhas().size();
+        if (!tabela.linhas().isEmpty()) {
+          ValidadorCamposCsv.adicionarDivergenciaCnpj(criticas, arquivo, tabela.linhas().get(0).numero(), tabela.valor(tabela.linhas().get(0), "nrInsc"), cnpjEsperado, caminhoNrInsc(leiaute));
+        }
       } else {
         var modelo = csvD1001.fromXml(xml);
         csv = csvD1001.toCsv(modelo);
@@ -101,6 +142,7 @@ public class ServicoValidacaoLeiaute {
         if (!tabela.linhas().isEmpty()) {
           ValidadorCamposCsv.adicionarDivergenciaCnpj(criticas, arquivo, tabela.linhas().get(0).numero(), tabela.valor(tabela.linhas().get(0), "nrInsc"), cnpjEsperado, caminhoNrInsc(leiaute));
         }
+        adicionarChave(criticas, arquivo, leiaute, modelo.operation(), modelo.cnpjRoot(), modelo.validFrom(), modelo.validTo(), idEntidade, tabela.linhas().isEmpty() ? null : tabela.linhas().get(0).numero());
       }
     } catch (Exception ex) {
       if (criticas.isEmpty()) {
@@ -142,6 +184,10 @@ public class ServicoValidacaoLeiaute {
     }
   }
 
+  private void adicionarChave(List<Critica> criticas, String arquivo, String leiaute, int operacao, String cnpj, java.time.LocalDate iniValid, java.time.LocalDate fimValid, Long idEntidade, Integer linha) {
+    mesclarAusentes(criticas, chaves.validar(leiaute, arquivo, linha, operacao, cnpj, iniValid, fimValid, idEntidade));
+  }
+
   private void adicionarDependencias(List<Critica> criticas, String arquivo, D1011 modelo, Long idEntidade, Integer linha) {
     var dependenciasEvento = dependencias.validate(modelo, new ValidationContext(idEntidade, null));
     for (var problema : dependenciasEvento) {
@@ -154,7 +200,27 @@ public class ServicoValidacaoLeiaute {
   }
 
   private static String caminhoNrInsc(String leiaute) {
-    return "D-1011".equals(leiaute) ? "/DeRE/evtPGCC/ideContrib/nrInsc" : "/DeRE/evtInfoContrib/ideContrib/nrInsc";
+    return "/DeRE/" + evento(leiaute) + "/ideContrib/nrInsc";
+  }
+
+  private static String evento(String leiaute) {
+    if ("D-1011".equals(leiaute)) return "evtPGCC";
+    if ("D-1101".equals(leiaute)) return "evtBalancete";
+    if ("D-1199".equals(leiaute)) return "evtFechMensal";
+    return "evtInfoContrib";
+  }
+
+  private static List<RegraCampo> catalogo(String leiaute) {
+    if ("D-1011".equals(leiaute)) return CatalogosCampo.d1011();
+    if ("D-1101".equals(leiaute)) return CatalogosCampo.d1101();
+    if ("D-1199".equals(leiaute)) return CatalogosCampo.d1199();
+    return CatalogosCampo.d1001();
+  }
+
+  private static String xsd(String leiaute) {
+    if ("D-1011".equals(leiaute)) return XSD_D1011;
+    if ("D-1101".equals(leiaute)) return XSD_D1101;
+    return XSD_D1001;
   }
 
   private static String vazioPara(String valor, String padrao) {

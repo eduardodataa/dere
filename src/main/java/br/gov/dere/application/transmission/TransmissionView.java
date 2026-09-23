@@ -7,6 +7,7 @@ public record TransmissionView(
     Long eventId,
     String layout,
     String sourceName,
+    String operationType,
     String eventIdentifier,
     String protocol,
     String receiptNumber,
@@ -20,7 +21,7 @@ public record TransmissionView(
     String batchXml,
     String returnXml) {
   public TransmissionView resumida() {
-    return new TransmissionView(batchId, eventId, layout, sourceName, eventIdentifier, protocol, receiptNumber, status,
+    return new TransmissionView(batchId, eventId, layout, sourceName, operationType, eventIdentifier, protocol, receiptNumber, status,
         simulated, createdAt, sentAt, processedAt, null, null, null, null);
   }
 }

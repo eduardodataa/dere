@@ -63,6 +63,17 @@ public final class CatalogosCampo {
   public static final Map<String, String> IND_ISS = dominio(
       "0", "Não sujeita ao ISS",
       "1", "Sujeita ao ISS");
+  public static final Map<String, String> NAT_SALDO = dominio(
+      "D", "Devedor",
+      "C", "Credor");
+  public static final Map<String, String> TP_OPER_1199 = dominio(
+      "1", "Inclusão");
+  public static final Map<String, String> USAR_BCN = dominio(
+      "0", "Não aproveitar bases negativas",
+      "1", "Aproveitar bases negativas");
+  public static final Map<String, String> METODO_BCN = dominio(
+      "0", "PEPS automático",
+      "1", "Informação manual");
 
   public static List<RegraCampo> d1001() {
     return List.of(
@@ -117,6 +128,48 @@ public final class CatalogosCampo {
         RegraCampo.texto("idLeiDisp", false, "\\d{2}-\\d{2}", "máscara CC-CC (ex.: 01-02)", 5, "/DeRE/evtPGCC/infoPGCC/infoContas/infoConta/idLeiDisp", false),
         RegraCampo.data("iniVig", true, "/DeRE/evtPGCC/infoPGCC/infoContas/infoConta/iniVig", false),
         RegraCampo.data("fimVig", false, "/DeRE/evtPGCC/infoPGCC/infoContas/infoConta/fimVig", false));
+  }
+
+  public static List<RegraCampo> d1101() {
+    return List.of(
+        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtBalancete/@id", true),
+        RegraCampo.dominio("motExcl", false, MOT_EXCL, "/DeRE/evtBalancete/ideEvento/motExcl", true),
+        RegraCampo.texto("nrProc", false, null, "até 21 caracteres", 21, "/DeRE/evtBalancete/ideEvento/nrProc", true),
+        RegraCampo.texto("nrRecibo", false, "[0-9]{4}-20[0-9]{2}(0[1-9]|1[0-2])-[0-9A-Z]{19}", "31 caracteres no formato NNNN-AAAAMM-XXXXXXXXXXXXXXXXXXX", 31, "/DeRE/evtBalancete/ideEvento/nrRecibo", true),
+        RegraCampo.dominio("tpOper", true, TP_OPER, "/DeRE/evtBalancete/ideEvento/tpOper", true),
+        RegraCampo.dominio("tpAmb", true, TP_AMB, "/DeRE/evtBalancete/ideEvento/tpAmb", true),
+        RegraCampo.dominio("aplicEmi", true, APLIC_EMI, "/DeRE/evtBalancete/ideEvento/aplicEmi", true),
+        RegraCampo.texto("verAplic", true, null, "1 a 20 caracteres", 20, "/DeRE/evtBalancete/ideEvento/verAplic", true),
+        RegraCampo.texto("nrInsc", true, "[0-9A-Z]{8}", "8 caracteres (CNPJ raiz, A-Z e 0-9)", 8, "/DeRE/evtBalancete/ideContrib/nrInsc", true),
+        RegraCampo.texto("perApur", true, "20[0-9]{2}-(0[1-9]|1[0-2])", "AAAA-MM", 7, "/DeRE/evtBalancete/idePeriodo/perApur", true),
+        RegraCampo.texto("cCta", true, "[0-9A-Za-z]{1,53}", "somente letras e números, sem ponto ou traço", 53, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/cCta", false),
+        RegraCampo.dominio("natSaldoInic", true, NAT_SALDO, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/natSaldoInic", false),
+        RegraCampo.texto("vSaldoInic", true, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vSaldoInic", false),
+        RegraCampo.texto("vMovDebt", true, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vMovDebt", false),
+        RegraCampo.texto("vAjusteDebt", false, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vAjusteDebt", false),
+        RegraCampo.texto("vMovCred", true, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vMovCred", false),
+        RegraCampo.texto("vAjusteCred", false, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vAjusteCred", false),
+        RegraCampo.dominio("natSaldoFinal", true, NAT_SALDO, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/natSaldoFinal", false),
+        RegraCampo.texto("vSaldoFinal", true, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vSaldoFinal", false),
+        RegraCampo.dominio("natVApur", false, NAT_SALDO, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/natVApur", false),
+        RegraCampo.texto("vApur", true, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtBalancete/infoBalancete/infoContas/infoConta/vApur", false));
+  }
+
+  public static List<RegraCampo> d1199() {
+    return List.of(
+        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtFechMensal/@id", true),
+        RegraCampo.dominio("tpOper", true, TP_OPER_1199, "/DeRE/evtFechMensal/ideEvento/tpOper", true),
+        RegraCampo.dominio("tpAmb", true, TP_AMB, "/DeRE/evtFechMensal/ideEvento/tpAmb", true),
+        RegraCampo.dominio("aplicEmi", true, APLIC_EMI, "/DeRE/evtFechMensal/ideEvento/aplicEmi", true),
+        RegraCampo.texto("verAplic", true, null, "1 a 20 caracteres", 20, "/DeRE/evtFechMensal/ideEvento/verAplic", true),
+        RegraCampo.texto("nrInsc", true, "[0-9A-Z]{8}", "8 caracteres (CNPJ raiz, A-Z e 0-9)", 8, "/DeRE/evtFechMensal/ideContrib/nrInsc", true),
+        RegraCampo.texto("perApur", true, "20[0-9]{2}-(0[1-9]|1[0-2])", "AAAA-MM", 7, "/DeRE/evtFechMensal/idePeriodo/perApur", true),
+        RegraCampo.texto("codBCNRaiz", false, "[1-9][0-9]{3}[IC]", "5 caracteres (ex.: 1001I)", 5, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/infoBCN/codBCNRaiz", false),
+        RegraCampo.dominio("usarBCNAcum", false, USAR_BCN, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/infoBCN/usarBCNAcum", false),
+        RegraCampo.dominio("metodoAproveit", false, METODO_BCN, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/infoBCN/metodoAproveit", false),
+        RegraCampo.texto("vUtilBCN", false, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/infoBCN/vUtilBCN", false),
+        RegraCampo.texto("codBCN", false, "[1-9][0-9]{3}[IC][0-9]{8}", "13 caracteres (ex.: 1001I20261001)", 13, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/detBCNeg/codBCN", false),
+        RegraCampo.texto("vUsarBCN", false, "(0|[1-9][0-9]{0,14})[.,][0-9]{2}", "valor absoluto com 2 decimais", 18, "/DeRE/evtFechMensal/infoFechamento/gUtilizBCN/detBCNeg/vUsarBCN", false));
   }
 
   public static RegraCampo porNome(List<RegraCampo> catalogo, String nome) {

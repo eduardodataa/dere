@@ -76,7 +76,9 @@ class SimulatedTransmissionServiceTest {
     var certificates = mock(CertificateService.class);
     var importD1001 = mock(D1001ImportService.class);
     var dependencias = mock(D1011DependencyValidator.class);
+    var chaves = mock(br.gov.dere.application.validation.ChaveEventoTabelaValidator.class);
     when(dependencias.validate(any(), any())).thenReturn(List.of());
+    when(chaves.validar(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any(), any(), any(), any())).thenReturn(List.of());
     doNothing().when(access).assertAccess(anyLong(), anyLong());
     when(access.entity(8L)).thenReturn(new DereEntityEntity("12345678", "EFPC teste"));
     when(certificates.list(8L)).thenReturn(List.of());
@@ -116,7 +118,7 @@ class SimulatedTransmissionServiceTest {
     when(batches.findById(anyLong())).thenAnswer(inv -> Optional.ofNullable(lotes.get(inv.getArgument(0))));
     when(attempts.save(any())).thenAnswer(inv -> inv.getArgument(0));
     return new SimulatedTransmissionService(mock, "restricted-production", "nota_2026_001", access,
-        new ServicoValidacaoLeiaute(dependencias), importD1001, certificates, events, batches, attempts,
+        new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events, batches, attempts,
         new TransmissionArtifactStore());
   }
 
