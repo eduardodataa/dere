@@ -1,5 +1,6 @@
 package br.gov.dere.api;
 
+import br.gov.dere.application.transmission.ProtocoloPdf;
 import br.gov.dere.application.transmission.SimulateSendRequest;
 import br.gov.dere.application.transmission.SimulateSendResult;
 import br.gov.dere.application.transmission.SimulatedTransmissionService;
@@ -7,6 +8,9 @@ import br.gov.dere.application.transmission.TransmissionView;
 import br.gov.dere.persistence.DereTransmissionAttemptEntity;
 import br.gov.dere.persistence.DereTransmissionAttemptRepository;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,5 +64,30 @@ public class TransmissionController {
   @GetMapping("/events/{eventId}/attempts")
   public List<DereTransmissionAttemptEntity> attempts(@PathVariable Long eventId) {
     return repository.findByEventIdOrderByAttemptAsc(eventId);
+  }
+
+  @GetMapping("/{batchId}/protocolo.pdf")
+  public ResponseEntity<byte[]> protocolo(
+      @PathVariable Long batchId,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader("X-Entity-Id") Long entityId) {
+    var detalhe = simulated.detalhe(userId, entityId, batchId);
+    var nome = "protocolo-" + (detalhe.protocol() == null ? batchId : detalhe.protocol().replace('.', '-')) + ".pdf";
+    return ResponseEntity.ok()
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + nome)
+        .contentType(MediaType.APPLICATION_PDF)
+        .body(ProtocoloPdf.protocolo(detalhe));
+  }
+
+  @PostMapping("/relatorio.pdf")
+  public ResponseEntity<byte[]> relatorio(
+      @RequestBody List<TransmissionView> linhas,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader("X-Entity-Id") Long entityId) {
+    simulated.listar(userId, entityId);
+    return ResponseEntity.ok()
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=relatorio-transmissoes.pdf")
+        .contentType(MediaType.APPLICATION_PDF)
+        .body(ProtocoloPdf.relatorio(linhas == null ? List.of() : linhas));
   }
 }

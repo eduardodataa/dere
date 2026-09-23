@@ -11,7 +11,7 @@ import org.w3c.dom.Element;
 
 public class DereCsvConverter {
   private static final DateTimeFormatter BR_DATE=DateTimeFormatter.ofPattern("dd/MM/yyyy");
-  private static final String HEADER="id;motExcl;nrProc;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;fimValid;novaValidadeIniValid;novaValidadeFimValid;regTribPrinc;regTribSecund;indNatTrib;tpAtividadeServFinanc;tpAtividadePlAssistSaude;tpAtividadePrognosticos;UFCredenc";
+  public static final String HEADER="id;motExcl;nrProc;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;fimValid;novaValidadeIniValid;novaValidadeFimValid;regTribPrinc;regTribSecund;indNatTrib;tpAtividadeServFinanc;tpAtividadePlAssistSaude;tpAtividadePrognosticos;UFCredenc";
   public D1001 fromCsv(String csv){
     var text=csv==null?"":csv.startsWith("\uFEFF")?csv.substring(1):csv;
     var lines=text.lines().filter(s->!s.isBlank()).toList();
