@@ -17,6 +17,10 @@ dere:
   environment: ${DERE_ENVIRONMENT:restricted-production}
   schema-version: ${DERE_SCHEMA_VERSION:nota_2026_001}
   transmission.poll-delay-ms: ${DERE_TRANSMISSION_POLL_DELAY_MS:30000}
+  transmission.http-connect-timeout-ms: ${DERE_TRANSMISSION_HTTP_CONNECT_TIMEOUT_MS:5000}
+  transmission.http-read-timeout-ms: ${DERE_TRANSMISSION_HTTP_READ_TIMEOUT_MS:30000}
+  transmission.http-max-attempts: ${DERE_TRANSMISSION_HTTP_MAX_ATTEMPTS:3}
+  transmission.http-retry-delay-ms: ${DERE_TRANSMISSION_HTTP_RETRY_DELAY_MS:200}
   api:
     base-url: ${DERE_BASE_URL:https://api.receitafederal.gov.br/dere}
     token-url: ${RECEITA_INTEGRA_TOKEN_URL:https://api.receitafederal.gov.br/token}

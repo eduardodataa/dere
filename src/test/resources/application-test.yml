@@ -21,6 +21,10 @@ dere:
     password-store: local
     secret-dir: ${java.io.tmpdir}/dere-it-cert-secrets
   transmission.poll-delay-ms: 3600000
+  transmission.http-connect-timeout-ms: 1000
+  transmission.http-read-timeout-ms: 2000
+  transmission.http-max-attempts: 3
+  transmission.http-retry-delay-ms: 10
   api:
     base-url: https://api.receitafederal.gov.br/dere
     token-url: https://api.receitafederal.gov.br/token

@@ -41,6 +41,17 @@ class HttpGovernmentTransmissionAdapterTest {
     var ex = assertThrows(GovernmentTransmissionException.class, () -> adapter.submit("<lote/>", "k1"));
     assertTrue(ex.retryable());
     assertEquals(503, ex.statusCode());
+    verify(client, org.mockito.Mockito.times(3)).transmit(any(), any());
+  }
+
+  @Test
+  void submitRecuperaAposRetryEm503() {
+    when(client.transmit(any(), any()))
+        .thenReturn(new GovernmentHttpResponse(503, "busy"))
+        .thenReturn(new GovernmentHttpResponse(201, "<r><protocolo>P-2</protocolo><codigo>OK</codigo></r>"));
+    var result = adapter.submit("<lote/>", "k1");
+    assertEquals("P-2", result.protocol());
+    verify(client, org.mockito.Mockito.times(2)).transmit(any(), any());
   }
 
   @Test
