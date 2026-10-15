@@ -7,6 +7,7 @@ import br.gov.dere.application.d1001.D1001ImportService;
 import br.gov.dere.application.periodico.D1101CsvConverter;
 import br.gov.dere.application.periodico.D1199CsvConverter;
 import br.gov.dere.application.pgcc.D1011CsvConverter;
+import br.gov.dere.application.settings.IntegrationSettingsService;
 import br.gov.dere.application.validation.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validation.relatorio.Critica;
 import br.gov.dere.application.validation.relatorio.RelatorioValidacao;
@@ -19,6 +20,7 @@ import br.gov.dere.integration.xml.DereBatchBuilder;
 import br.gov.dere.persistence.DereBatchEntity;
 import br.gov.dere.persistence.DereBatchRepository;
 import br.gov.dere.persistence.DereEventEntity;
+import br.gov.dere.persistence.DereEventErrorRepository;
 import br.gov.dere.persistence.DereEventRepository;
 import br.gov.dere.persistence.DereTransmissionAttemptEntity;
 import br.gov.dere.persistence.DereTransmissionAttemptRepository;
@@ -34,7 +36,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,14 +44,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class SimulatedTransmissionService {
   private static final DateTimeFormatter PROTOCOLO = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
-  private final boolean mockEnabled;
-  private final String environment;
-  private final String schemaVersion;
+  private final IntegrationSettingsService integration;
+  private final GovernmentTransmissionPort government;
   private final AccessService access;
   private final ServicoValidacaoLeiaute validacao;
   private final D1001ImportService importD1001;
   private final CertificateService certificates;
   private final DereEventRepository events;
+  private final DereEventErrorRepository eventErrors;
   private final DereBatchRepository batches;
   private final DereTransmissionAttemptRepository attempts;
   private final TransmissionArtifactStore artefatos;
@@ -63,25 +64,25 @@ public class SimulatedTransmissionService {
   private final D1199CsvConverter csvD1199 = new D1199CsvConverter();
 
   public SimulatedTransmissionService(
-      @Value("${dere.mock.enabled:true}") boolean mockEnabled,
-      @Value("${dere.environment:restricted-production}") String environment,
-      @Value("${dere.schema-version:nota_2026_001}") String schemaVersion,
+      IntegrationSettingsService integration,
+      GovernmentTransmissionPort government,
       AccessService access,
       ServicoValidacaoLeiaute validacao,
       D1001ImportService importD1001,
       CertificateService certificates,
       DereEventRepository events,
+      DereEventErrorRepository eventErrors,
       DereBatchRepository batches,
       DereTransmissionAttemptRepository attempts,
       TransmissionArtifactStore artefatos) {
-    this.mockEnabled = mockEnabled;
-    this.environment = environment;
-    this.schemaVersion = schemaVersion;
+    this.integration = integration;
+    this.government = government;
     this.access = access;
     this.validacao = validacao;
     this.importD1001 = importD1001;
     this.certificates = certificates;
     this.events = events;
+    this.eventErrors = eventErrors;
     this.batches = batches;
     this.attempts = attempts;
     this.artefatos = artefatos;
@@ -112,16 +113,17 @@ public class SimulatedTransmissionService {
           loteExistente == null ? visao(null, existente) : visao(loteExistente, existente));
     }
     try {
+      var cfg = integration.current();
       var chave = carregarChave(entityId);
       var assinado = signer.sign(xml, chave.keyStore(), chave.password(), chave.alias());
       if (!verifier.verify(assinado, chave.keyStore(), chave.alias())) throw new IllegalStateException("Assinatura XMLDSig inválida");
       var lote = new DereBatchBuilder().build(cnpj, List.of(assinado));
-      var evento = new DereEventEntity(leiaute, identificador, environment, schemaVersion, null);
+      var evento = new DereEventEntity(leiaute, identificador, cfg.environment(), cfg.schemaVersion(), null);
       evento.ownedBy(userId, entityId);
-      evento.source(arquivo, null, true);
+      evento.source(arquivo, null, !cfg.realAdapterEnabled());
       evento.operation(operacao(leiaute, xml));
       evento = events.saveAndFlush(evento);
-      evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), true);
+      evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), !cfg.realAdapterEnabled());
       events.saveAndFlush(evento);
       evento.unsigned(artefatos.guardar(identificador, "evento", xml));
       events.saveAndFlush(evento);
@@ -135,13 +137,22 @@ public class SimulatedTransmissionService {
       evento.attachBatch(batch.getId());
       events.saveAndFlush(evento);
       var agora = Instant.now();
-      var protocolo = novoProtocolo();
-      var recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
+      String protocolo;
+      String recepcao;
+      if (cfg.realAdapterEnabled()) {
+        var envio = government.submit(lote, identificador);
+        protocolo = envio.protocol() == null || envio.protocol().isBlank() ? novoProtocolo() : envio.protocol();
+        recepcao = envio.responseBody() == null ? "" : envio.responseBody();
+        registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, envio.httpStatus(), false);
+      } else {
+        protocolo = novoProtocolo();
+        recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
+        registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, 200, true);
+      }
       batch.received(protocolo, artefatos.guardar(identificador, "recepcao", recepcao));
       batches.saveAndFlush(batch);
       evento.sent();
       events.saveAndFlush(evento);
-      registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao);
       if ("D-1001".equals(leiaute)) importD1001.persistValidatedXml(userId, entityId, arquivo, xml);
       return new SimulateSendResult(true, relatorio, visao(batch, evento));
     } catch (ResponseStatusException ex) {
@@ -162,6 +173,27 @@ public class SimulatedTransmissionService {
     var evento = eventoDoLote(batchId);
     if (evento.getReceiptNumber() != null && !evento.getReceiptNumber().isBlank()) return visao(batch, evento);
     try {
+      var cfg = integration.current();
+      if (cfg.realAdapterEnabled()) {
+        var consulta = government.query(batch.getProtocol());
+        var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
+        var recibo = consulta.receipt() == null || consulta.receipt().isBlank()
+            ? novoRecibo(batch.getId())
+            : consulta.receipt();
+        var status = switch (consulta.state()) {
+          case ACCEPTED -> EventStatus.ACCEPTED;
+          case REJECTED -> EventStatus.REJECTED;
+          default -> EventStatus.PROCESSING;
+        };
+        batch.completed(status, artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno));
+        batches.save(batch);
+        if (status != EventStatus.PROCESSING) {
+          evento.processed(status, recibo);
+          events.save(evento);
+        }
+        registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), retorno, consulta.httpStatus(), false);
+        return visao(batch, evento);
+      }
       var chave = carregarChave(entityId);
       var agora = Instant.now();
       var recebido = batch.getSentAt() == null ? agora : batch.getSentAt();
@@ -178,7 +210,7 @@ public class SimulatedTransmissionService {
       batches.save(batch);
       evento.processed(EventStatus.ACCEPTED, recibo);
       events.save(evento);
-      registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), consulta);
+      registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), consulta, 200, true);
       return visao(batch, evento);
     } catch (ResponseStatusException ex) {
       throw ex;
@@ -201,6 +233,25 @@ public class SimulatedTransmissionService {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lote de outra entidade");
     }
     return visao(batch, eventoDoLote(batchId));
+  }
+
+  @Transactional
+  public void excluir(Long userId, Long entityId, Long batchId) {
+    access.assertAccess(userId, entityId);
+    if (!access.user(userId).isMaster()) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Apenas usuário master pode excluir transmissão");
+    }
+    var batch = batches.findById(batchId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado"));
+    if (batch.getEntityId() != null && !batch.getEntityId().equals(entityId)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lote de outra entidade");
+    }
+    var eventos = events.findByBatchId(batchId);
+    for (var evento : eventos) {
+      attempts.deleteByEventId(evento.getId());
+      eventErrors.deleteByEventId(evento.getId());
+      events.delete(evento);
+    }
+    batches.delete(batch);
   }
 
   private DereEventEntity eventoDoLote(Long batchId) {
@@ -250,14 +301,20 @@ public class SimulatedTransmissionService {
     return assinado;
   }
 
-  private void registrarTentativa(Long eventId, String operacao, String protocolo, String retorno) {
+  private void registrarTentativa(Long eventId, String operacao, String protocolo, String retorno, int httpStatus, boolean mock) {
     var tentativa = new DereTransmissionAttemptEntity(eventId, operacao, 1, UUID.randomUUID().toString());
-    tentativa.complete("SUCCESS", 200, "MOCK_ACCEPTED", 0, "mock://" + operacao.toLowerCase() + "/" + protocolo, "mock://retorno/" + protocolo, null);
+    var prefixo = mock ? "mock://" : "receita://";
+    tentativa.complete("SUCCESS", httpStatus, mock ? "MOCK_ACCEPTED" : "GOV_ACCEPTED", 0,
+        prefixo + operacao.toLowerCase() + "/" + protocolo, prefixo + "retorno/" + protocolo, null);
     attempts.save(tentativa);
   }
 
   private void exigirMock() {
-    if (!mockEnabled) throw new ResponseStatusException(HttpStatus.CONFLICT, "Envio simulado desabilitado (DERE_MOCK_ENABLED=false).");
+    var cfg = integration.current();
+    if (cfg.realAdapterEnabled()) return;
+    if (!cfg.mockEnabled()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Envio simulado desabilitado. Ative o mock ou o adaptador real em Configurações.");
+    }
   }
 
   private static String normalizarLeiaute(String layout) {

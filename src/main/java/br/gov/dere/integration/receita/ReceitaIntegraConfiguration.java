@@ -1,6 +1,6 @@
 package br.gov.dere.integration.receita;
 
-import org.springframework.beans.factory.annotation.Value;
+import br.gov.dere.application.settings.IntegrationSettingsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -13,17 +13,13 @@ public class ReceitaIntegraConfiguration {
   }
 
   @Bean
-  ReceitaIntegraAuthClient receitaIntegraAuthClient(RestClient.Builder builder,
-      @Value("${dere.api.token-url}") String tokenUrl,
-      @Value("${dere.auth.client-id}") String clientId,
-      @Value("${dere.auth.client-secret}") String clientSecret) {
-    return new ReceitaIntegraAuthClient(builder, tokenUrl, clientId, clientSecret);
+  ReceitaIntegraAuthClient receitaIntegraAuthClient(RestClient.Builder builder, IntegrationSettingsService settings) {
+    return new ReceitaIntegraAuthClient(builder, settings);
   }
 
   @Bean
-  DereTransmissionClient dereTransmissionClient(RestClient.Builder builder,
-      ReceitaIntegraAuthClient auth,
-      @Value("${dere.api.base-url}") String baseUrl) {
-    return new DereTransmissionClient(builder, auth, baseUrl);
+  DereTransmissionClient dereTransmissionClient(
+      RestClient.Builder builder, ReceitaIntegraAuthClient auth, IntegrationSettingsService settings) {
+    return new DereTransmissionClient(builder, auth, settings);
   }
 }

@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:dere_it;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate.ddl-auto: create-drop
+    defer-datasource-initialization: true
+    properties.hibernate.dialect: org.hibernate.dialect.H2Dialect
+  flyway.enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:it/schema-jdbc.sql
+  task.scheduling.enabled: false
+dere:
+  mock.enabled: true
+  certificate:
+    encryption-key: local-poc-key-not-for-production
+    password-store: local
+    secret-dir: ${java.io.tmpdir}/dere-it-cert-secrets
+  transmission.poll-delay-ms: 3600000
+  api:
+    base-url: https://api.receitafederal.gov.br/dere
+    token-url: https://api.receitafederal.gov.br/token
+  environment: restricted-production
+  schema-version: nota_2026_001

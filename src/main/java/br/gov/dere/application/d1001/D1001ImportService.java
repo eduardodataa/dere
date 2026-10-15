@@ -67,7 +67,7 @@ public class D1001ImportService {
       boolean ok = relatorio.valido();
       if (ok) validos++; else invalidos++;
       insertDocument(batchId, userId, entityId, documento, ok, resumir(relatorio));
-      arquivos.add(new ResultadoArquivo(documento.name(), idEvento, ok, analisado, paraProblemas(relatorio), relatorio.criticas()));
+      arquivos.add(new ResultadoArquivo(documento.name(), idEvento, ok, analisado, paraProblemas(relatorio), relatorio.criticas(), documento.xml()));
     }
     jdbc.update("UPDATE dere_upload_batch SET valid_count=?, invalid_count=? WHERE id=?", validos, invalidos, batchId);
     var planilha = validacao.agregar("D-1001", "XML", source, documents.size(), criticas);
@@ -164,7 +164,7 @@ public class D1001ImportService {
     return name == null || name.startsWith("/") || name.startsWith("\\") || name.contains("..") || name.matches("^[A-Za-z]:.*");
   }
 
-  public record ResultadoArquivo(String nomeArquivo, String idEvento, boolean valido, D1001 analisado, List<XmlSupport.Issue> problemas, List<Critica> criticas) {}
+  public record ResultadoArquivo(String nomeArquivo, String idEvento, boolean valido, D1001 analisado, List<XmlSupport.Issue> problemas, List<Critica> criticas, String xml) {}
   private String csvConvertido(List<ResultadoArquivo> arquivos) {
     var saida = new StringBuilder();
     for (ResultadoArquivo arquivo : arquivos) {

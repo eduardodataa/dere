@@ -11,6 +11,7 @@ target/
 application-local.yml
 node_modules/
 dist/
+src/main/resources/static/
 .npm-cache/
 *.tsbuildinfo
 *.log

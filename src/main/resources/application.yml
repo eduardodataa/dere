@@ -18,7 +18,7 @@ dere:
   schema-version: ${DERE_SCHEMA_VERSION:nota_2026_001}
   transmission.poll-delay-ms: ${DERE_TRANSMISSION_POLL_DELAY_MS:30000}
   api:
-    base-url: ${DERE_BASE_URL:https://api.receitafederal.gov.br/prr-dere}
+    base-url: ${DERE_BASE_URL:https://api.receitafederal.gov.br/dere}
     token-url: ${RECEITA_INTEGRA_TOKEN_URL:https://api.receitafederal.gov.br/token}
   auth:
     client-id: ${DERE_CLIENT_ID:}

@@ -5,6 +5,7 @@ on:
     branches:
       - staging
       - homologacao
+      - main
   workflow_dispatch:
     inputs:
       environment:
@@ -57,6 +58,8 @@ jobs:
             TARGET="${{ inputs.environment }}"
           elif [ "${GITHUB_REF_NAME}" = "homologacao" ]; then
             TARGET=homologacao
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
+            TARGET=production
           else
             TARGET=staging
           fi
@@ -89,6 +92,22 @@ jobs:
               ;;
           esac
 
+      - name: Validate deploy secrets
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          missing=
+          [ -n "$EC2_SSH_KEY" ] || missing="$missing EC2_SSH_KEY"
+          [ -n "$EC2_HOST" ] || missing="$missing EC2_HOST"
+          [ -n "$EC2_USER" ] || missing="$missing EC2_USER"
+          if [ -n "$missing" ]; then
+            echo "Secrets ausentes:$missing"
+            echo "Configure com: gh secret set EC2_SSH_KEY < chave.pem"
+            exit 1
+          fi
+
       - uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
@@ -100,11 +119,11 @@ jobs:
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Copy JAR
-        run: scp target/dere-poc-0.0.1-SNAPSHOT.jar "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-poc-${GITHUB_RUN_ID}.jar"
+        run: scp -o StrictHostKeyChecking=yes target/dere-poc-0.0.1-SNAPSHOT.jar "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-poc-${GITHUB_RUN_ID}.jar"
 
       - name: Restart service
         run: |
-          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "set -euo pipefail
           sudo cp /tmp/dere-poc-${GITHUB_RUN_ID}.jar ${{ steps.env.outputs.dir }}/dere-poc.jar
           sudo chown ubuntu:ubuntu ${{ steps.env.outputs.dir }}/dere-poc.jar
           rm -f /tmp/dere-poc-${GITHUB_RUN_ID}.jar

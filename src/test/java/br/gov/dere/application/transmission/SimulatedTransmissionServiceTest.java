@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.certificate.CertificateService;
 import br.gov.dere.application.d1001.D1001ImportService;
+import br.gov.dere.application.settings.IntegrationSettings;
+import br.gov.dere.application.settings.IntegrationSettingsService;
 import br.gov.dere.application.validation.D1011DependencyValidator;
 import br.gov.dere.application.validation.ServicoValidacaoLeiaute;
 import br.gov.dere.domain.EventStatus;
@@ -68,7 +70,7 @@ class SimulatedTransmissionServiceTest {
     assertTrue(repetido.validacao().criticas().stream().anyMatch(item -> item.problema().contains("já existe transmissão") || item.problema().contains("Já existe transmissão")));
   }
 
-  private static SimulatedTransmissionService servico(boolean mock) {
+  private static SimulatedTransmissionService servico(boolean mockEnabled) {
     var events = mock(DereEventRepository.class);
     var batches = mock(DereBatchRepository.class);
     var attempts = mock(DereTransmissionAttemptRepository.class);
@@ -117,8 +119,13 @@ class SimulatedTransmissionServiceTest {
     });
     when(batches.findById(anyLong())).thenAnswer(inv -> Optional.ofNullable(lotes.get(inv.getArgument(0))));
     when(attempts.save(any())).thenAnswer(inv -> inv.getArgument(0));
-    return new SimulatedTransmissionService(mock, "restricted-production", "nota_2026_001", access,
-        new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events, batches, attempts,
+    var integration = mock(IntegrationSettingsService.class);
+    when(integration.current()).thenReturn(new IntegrationSettings(
+        false, mockEnabled, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
+        "", null, false, "restricted-production", "nota_2026_001"));
+    return new SimulatedTransmissionService(integration, mock(GovernmentTransmissionPort.class), access,
+        new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events,
+        mock(br.gov.dere.persistence.DereEventErrorRepository.class), batches, attempts,
         new TransmissionArtifactStore());
   }
 
