@@ -1,0 +1,23 @@
+name: Deploy DeRE Staging
+
+on:
+  push:
+    branches:
+      - staging
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: dere-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-dere.yml
+    with:
+      target: staging
+      git_ref: ${{ github.sha }}
+      environment_name: staging
+    secrets: inherit

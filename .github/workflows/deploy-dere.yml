@@ -1,0 +1,111 @@
+name: deploy-dere
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: staging, homologacao ou production
+        required: true
+        type: string
+      git_ref:
+        description: Revisão a publicar
+        required: true
+        type: string
+      environment_name:
+        description: Ambiente do GitHub Actions
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package application
+        run: |
+          mkdir -p src/main/resources/static
+          cp -r frontend/dist/. src/main/resources/static/
+          mvn -B -DskipTests package
+
+      - name: Resolve environment
+        id: env
+        run: |
+          case "${{ inputs.target }}" in
+            staging)
+              echo "config=scripts/config/dere-staging.conf" >> "$GITHUB_OUTPUT"
+              ;;
+            homologacao)
+              echo "config=scripts/config/dere-hml.conf" >> "$GITHUB_OUTPUT"
+              ;;
+            production)
+              echo "config=scripts/config/dere-prod.conf" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Ambiente inválido: ${{ inputs.target }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Validate deploy secrets
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          missing=
+          [ -n "$EC2_SSH_KEY" ] || missing="$missing EC2_SSH_KEY"
+          [ -n "$EC2_HOST" ] || missing="$missing EC2_HOST"
+          [ -n "$EC2_USER" ] || missing="$missing EC2_USER"
+          if [ -n "$missing" ]; then
+            echo "Secrets ausentes:$missing"
+            exit 1
+          fi
+
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Add host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy artifacts
+        run: |
+          scp -o StrictHostKeyChecking=yes \
+            target/dere-poc-0.0.1-SNAPSHOT.jar \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-poc-${GITHUB_RUN_ID}.jar"
+          scp -o StrictHostKeyChecking=yes \
+            scripts/deploy/deploy.sh \
+            "${{ steps.env.outputs.config }}" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"
+
+      - name: Restart service
+        run: |
+          ssh -o StrictHostKeyChecking=yes "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "set -euo pipefail
+          chmod +x /tmp/deploy.sh
+          sudo bash /tmp/deploy.sh /tmp/$(basename ${{ steps.env.outputs.config }}) /tmp/dere-poc-${GITHUB_RUN_ID}.jar
+          rm -f /tmp/dere-poc-${GITHUB_RUN_ID}.jar /tmp/deploy.sh /tmp/$(basename ${{ steps.env.outputs.config }})"

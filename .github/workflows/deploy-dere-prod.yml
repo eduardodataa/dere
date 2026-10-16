@@ -1,0 +1,17 @@
+name: Deploy DeRE Produção
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: dere-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-dere.yml
+    with:
+      target: production
+      git_ref: main
+      environment_name: production
+    secrets: inherit

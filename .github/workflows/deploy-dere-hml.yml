@@ -1,0 +1,23 @@
+name: Deploy DeRE Homologação
+
+on:
+  push:
+    branches:
+      - homologacao
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: dere-hml
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-dere.yml
+    with:
+      target: homologacao
+      git_ref: ${{ github.sha }}
+      environment_name: homologacao
+    secrets: inherit
