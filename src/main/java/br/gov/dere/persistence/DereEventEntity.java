@@ -78,6 +78,7 @@ public class DereEventEntity {
   public Long getId() { return id; }
   public String getEventType() { return eventType; }
   public String getEventIdentifier() { return eventIdentifier; }
+  public String getEnvironment() { return environment; }
   public String getXmlUnsigned() { return xmlUnsigned; }
   public String getXmlSigned() { return xmlSigned; }
   public EventStatus getStatus() { return status; }

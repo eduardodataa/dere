@@ -13,6 +13,7 @@ public record VisaoTransmissao(
     String receiptNumber,
     String status,
     boolean simulated,
+    String environment,
     Instant createdAt,
     Instant sentAt,
     Instant processedAt,
@@ -22,6 +23,6 @@ public record VisaoTransmissao(
     String returnXml) {
   public VisaoTransmissao resumida() {
     return new VisaoTransmissao(batchId, eventId, layout, sourceName, operationType, eventIdentifier, protocol, receiptNumber, status,
-        simulated, createdAt, sentAt, processedAt, null, null, null, null);
+        simulated, environment, createdAt, sentAt, processedAt, null, null, null, null);
   }
 }

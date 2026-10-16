@@ -14,6 +14,9 @@ class PoliticaStatusTransmissaoTest {
     assertEquals(EstadoTransmissao.REJECTED, PoliticaStatusTransmissao.deCodigoGoverno("REJEITADO"));
     assertEquals(EstadoTransmissao.PROCESSING, PoliticaStatusTransmissao.deCodigoGoverno(" "));
     assertEquals(EstadoTransmissao.PROCESSING, PoliticaStatusTransmissao.deCodigoGoverno("DESCONHECIDO"));
+    assertEquals(EstadoTransmissao.ACCEPTED, PoliticaStatusTransmissao.deCodigoGoverno("2"));
+    assertEquals(EstadoTransmissao.REJECTED, PoliticaStatusTransmissao.deCodigoGoverno("3"));
+    assertEquals(EstadoTransmissao.PROCESSING, PoliticaStatusTransmissao.deCodigoGoverno("1"));
   }
   @Test void identifiesTransientResponses() {
     assertTrue(PoliticaStatusTransmissao.retryable(408));

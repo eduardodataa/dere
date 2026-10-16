@@ -65,9 +65,11 @@ public class HttpTransmissaoGovernoAdapter implements TransmissaoGovernoPort {
       throw failure(response);
     }
     if (response.statusCode() != 200) throw failure(response);
+    String cdResposta = ParserRespostaGoverno.cdResposta(response.body());
     String codigoGoverno = ParserRespostaGoverno.code(response.body());
     String status = ParserRespostaGoverno.status(response.body());
-    EstadoTransmissao estado = PoliticaStatusTransmissao.deCodigoGoverno(status == null ? codigoGoverno : status);
+    EstadoTransmissao estado = PoliticaStatusTransmissao.deCodigoGoverno(
+        cdResposta != null ? cdResposta : status == null ? codigoGoverno : status);
     return new ResultadoConsulta(
         protocol,
         estado,

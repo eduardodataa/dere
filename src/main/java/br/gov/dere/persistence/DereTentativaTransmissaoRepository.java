@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 
 public interface DereTentativaTransmissaoRepository extends JpaRepository<DereTentativaTransmissaoEntity, Long> {
   List<DereTentativaTransmissaoEntity> findByEventIdOrderByAttemptAsc(Long eventId);
+  java.util.Optional<DereTentativaTransmissaoEntity> findTopByEventIdAndOperationOrderByAttemptDesc(Long eventId, String operation);
 
   @Modifying(clearAutomatically = true)
   void deleteByEventId(Long eventId);

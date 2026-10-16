@@ -8,6 +8,7 @@ import org.w3c.dom.Node;
 
 public final class ParserRespostaGoverno {
   private ParserRespostaGoverno() {}
+  public static String cdResposta(String xml) { return value(xml,"cdResposta"); }
   public static String protocol(String xml) { return value(xml,"protocolo","protocoloRecepcao","nrProt"); }
   public static String code(String xml) { return value(xml,"codigo","codigoErro","codResposta","statusCode"); }
   public static String receipt(String xml) { return value(xml,"recibo","numeroRecibo","nrRecibo"); }

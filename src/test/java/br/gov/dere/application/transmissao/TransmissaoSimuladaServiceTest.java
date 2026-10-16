@@ -68,6 +68,10 @@ class TransmissaoSimuladaServiceTest {
     assertNotNull(repetido.transmissao());
     assertEquals(consulta.protocol(), repetido.transmissao().protocol());
     assertTrue(repetido.validacao().criticas().stream().anyMatch(item -> item.problema().contains("já existe transmissão") || item.problema().contains("Já existe transmissão")));
+    var porProtocolo = fluxo.consultarProtocolo(1L, 8L, consulta.protocol());
+    assertEquals(consulta.protocol(), porProtocolo.protocol());
+    assertEquals(consulta.receiptNumber(), porProtocolo.receiptNumber());
+    assertNotNull(porProtocolo.transmissao());
   }
 
   private static TransmissaoSimuladaService servico(boolean mockEnabled) {
@@ -118,6 +122,7 @@ class TransmissaoSimuladaServiceTest {
       return lote;
     });
     when(batches.findById(anyLong())).thenAnswer(inv -> Optional.ofNullable(lotes.get(inv.getArgument(0))));
+    when(batches.findByProtocol(anyString())).thenAnswer(inv -> lotes.values().stream().filter(item -> inv.getArgument(0).equals(item.getProtocol())).findFirst());
     when(attempts.save(any())).thenAnswer(inv -> inv.getArgument(0));
     var integration = mock(ConfiguracaoIntegracaoService.class);
     when(integration.current()).thenReturn(new ConfiguracaoIntegracao(

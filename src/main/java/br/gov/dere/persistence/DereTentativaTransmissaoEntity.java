@@ -27,6 +27,7 @@ public class DereTentativaTransmissaoEntity {
   }
   public void complete(String outcome, Integer httpStatus, String codigoGoverno, long durationMs, String requestReference, String responseReference, String errorMessage) { this.outcome = outcome; this.httpStatus = httpStatus; this.codigoGoverno = codigoGoverno; this.durationMs = durationMs; this.requestReference = requestReference; this.responseReference = responseReference; this.errorMessage = errorMessage; this.finishedAt = Instant.now(); }
   public Long getId() { return id; }
+  public Integer getAttempt() { return attempt; }
   public String getOutcome() { return outcome; }
   public Instant getStartedAt() { return startedAt; }
 }
