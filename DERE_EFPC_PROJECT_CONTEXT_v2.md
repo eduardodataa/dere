@@ -1059,7 +1059,7 @@ DereEventGenerator
 DereXsdValidator
 DereXmlSigner
 DereBatchBuilder
-DereTransmissionClient
+ClienteTransmissaoDere
 DereProcessingClient
 DereReceiptProcessor
 ```
@@ -1157,7 +1157,7 @@ Separar:
 ReceitaIntegraAuthClient
   -> obtenção / renovação do Bearer Token
 
-DereTransmissionClient
+ClienteTransmissaoDere
   -> envio de lotes
 
 DereProcessingClient

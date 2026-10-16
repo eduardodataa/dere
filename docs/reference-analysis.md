@@ -200,7 +200,7 @@ public interface DereLayoutHandler<T> {
     LayoutVersion version();
     T parseXml(XmlInput input);
     T parseCsv(CsvInput input);
-    ValidationResult validate(T model, ValidationContext context);
+    ResultadoValidacao validate(T model, ContextoValidacao context);
     XmlDocument generateXml(T model);
     CsvDocument generateCsv(T model);
 }
@@ -310,7 +310,7 @@ As principais lacunas arquiteturais observadas são:
 - D-1011 ainda precisa de modelo, parser/generator, persistência canônica e dependency validator;
 - `DereBatchEntity` cobre apenas parte do histórico de transmissão;
 - não existe ainda `dere_transmission_attempt` e lease de worker;
-- `CertificateService` ainda concentra criptografia POC e acesso ao repositório;
+- `CertificadoService` ainda concentra criptografia POC e acesso ao repositório;
 - `PocSecretBox` usa uma chave derivada de configuração, aceitável como POC somente se a chave vier externamente, mas insuficiente como abstração de produção;
 - V4 cria tabelas XML por layout futuro antes de os handlers existirem; isso deve ser revisado para não congelar uma estratégia de tabela por layout;
 - autenticação e autorização ainda são mínimas para uma operação multi-entidade;

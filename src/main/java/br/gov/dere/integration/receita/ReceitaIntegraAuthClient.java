@@ -1,6 +1,6 @@
 package br.gov.dere.integration.receita;
 
-import br.gov.dere.application.settings.IntegrationSettingsService;
+import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
@@ -9,11 +9,11 @@ import org.springframework.web.client.RestClient;
 
 public class ReceitaIntegraAuthClient {
   private final RestClient client;
-  private final IntegrationSettingsService settings;
+  private final ConfiguracaoIntegracaoService settings;
   private volatile Token cached;
   private volatile String cacheKey;
 
-  public ReceitaIntegraAuthClient(RestClient.Builder builder, IntegrationSettingsService settings) {
+  public ReceitaIntegraAuthClient(RestClient.Builder builder, ConfiguracaoIntegracaoService settings) {
     this.client = builder.build();
     this.settings = settings;
   }

@@ -1,22 +1,22 @@
 package br.gov.dere.application.mock;
 
-import br.gov.dere.application.certificate.CertificateService;
+import br.gov.dere.application.certificado.CertificadoService;
 import br.gov.dere.application.d1001.D1001XmlGenerator;
 import br.gov.dere.domain.EventStatus;
 import br.gov.dere.domain.contributor.D1001;
 import br.gov.dere.integration.signature.DereXmlSigner;
 import br.gov.dere.integration.signature.DereXmlSignatureVerifier;
-import br.gov.dere.integration.signature.LocalTestCertificate;
+import br.gov.dere.integration.signature.CertificadoTesteLocal;
 import br.gov.dere.integration.xml.DereBatchBuilder;
 import br.gov.dere.integration.xml.XmlSupport;
 import br.gov.dere.persistence.DereBatchEntity;
 import br.gov.dere.persistence.DereBatchRepository;
 import br.gov.dere.persistence.DereEventEntity;
 import br.gov.dere.persistence.DereEventRepository;
-import br.gov.dere.persistence.DereTransmissionAttemptEntity;
-import br.gov.dere.persistence.DereTransmissionAttemptRepository;
-import br.gov.dere.persistence.DereValidationAuditEntity;
-import br.gov.dere.persistence.DereValidationAuditRepository;
+import br.gov.dere.persistence.DereTentativaTransmissaoEntity;
+import br.gov.dere.persistence.DereTentativaTransmissaoRepository;
+import br.gov.dere.persistence.DereAuditoriaValidacaoEntity;
+import br.gov.dere.persistence.DereAuditoriaValidacaoRepository;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -26,15 +26,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class LocalDereFlowService {
   private final DereEventRepository events;
   private final DereBatchRepository batches;
-  private final DereValidationAuditRepository audits;
-  private final DereTransmissionAttemptRepository attempts;
-  private final CertificateService certificates;
+  private final DereAuditoriaValidacaoRepository audits;
+  private final DereTentativaTransmissaoRepository attempts;
+  private final CertificadoService certificates;
   private final D1001XmlGenerator generator = new D1001XmlGenerator();
   private final DereXmlSigner signer = new DereXmlSigner();
   private final DereXmlSignatureVerifier verifier = new DereXmlSignatureVerifier();
 
-  public LocalDereFlowService(DereEventRepository events, DereBatchRepository batches, DereValidationAuditRepository audits,
-      DereTransmissionAttemptRepository attempts, CertificateService certificates) {
+  public LocalDereFlowService(DereEventRepository events, DereBatchRepository batches, DereAuditoriaValidacaoRepository audits,
+      DereTentativaTransmissaoRepository attempts, CertificadoService certificates) {
     this.events = events; this.batches = batches; this.audits = audits; this.attempts = attempts; this.certificates = certificates;
   }
 
@@ -42,14 +42,14 @@ public class LocalDereFlowService {
   public FlowResult submit(D1001 document, Long userId, Long entityId) {
     String correlationId = UUID.randomUUID().toString();
     long started = System.nanoTime();
-    DereTransmissionAttemptEntity attempt = null;
+    DereTentativaTransmissaoEntity attempt = null;
     try {
       String unsigned = generator.generate(document);
       var event = events.save(new DereEventEntity("D-1001", document.id(), "restricted-production", "nota_2026_001", unsigned));
-      attempt = attempts.save(new DereTransmissionAttemptEntity(event.getId(), "SUBMIT", 1, correlationId));
+      attempt = attempts.save(new DereTentativaTransmissaoEntity(event.getId(), "SUBMIT", 1, correlationId));
       var available = certificates.list(entityId);
       var loaded = available.isEmpty() ? null : certificates.loadForSigning(available.get(0).id());
-      var keyStore = loaded == null ? LocalTestCertificate.create() : loaded.keyStore();
+      var keyStore = loaded == null ? CertificadoTesteLocal.create() : loaded.keyStore();
       var password = loaded == null ? "changeit".toCharArray() : loaded.password();
       var alias = loaded == null ? "dere-test" : loaded.alias();
       String signed = signer.sign(unsigned, keyStore, password, alias);
@@ -58,14 +58,14 @@ public class LocalDereFlowService {
       event.signed(signed); events.save(event);
       String batchXml = new DereBatchBuilder().build(document.cnpjRoot(), List.of(signed));
       validate(batchXml, "envioLoteDere-v1_0_1.xsd");
-      audits.save(new DereValidationAuditEntity(userId, entityId, "SEND", "D-1001", true, "", batchXml, null));
+      audits.save(new DereAuditoriaValidacaoEntity(userId, entityId, "SEND", "D-1001", true, "", batchXml, null));
       var batch = batches.save(new DereBatchEntity(batchXml));
       String protocol = "MOCK-" + UUID.randomUUID(); batch.received(protocol); batches.save(batch);
       attempt.complete("SUCCESS", 200, "MOCK_ACCEPTED", elapsed(started), "mock://submit/" + correlationId, "mock://protocol/" + protocol, null); attempts.save(attempt);
       return new FlowResult(batch.getId(), protocol, event.getEventIdentifier(), EventStatus.PROCESSING, batchXml);
     } catch (Exception ex) {
       if (attempt != null) { attempt.complete("FAILURE", null, null, elapsed(started), null, null, ex.getMessage()); attempts.save(attempt); }
-      audits.save(new DereValidationAuditEntity(userId, entityId, "SEND", "D-1001", false, ex.getMessage(), null, null));
+      audits.save(new DereAuditoriaValidacaoEntity(userId, entityId, "SEND", "D-1001", false, ex.getMessage(), null, null));
       throw new IllegalStateException("Falha no fluxo local DeRE", ex);
     }
   }

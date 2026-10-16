@@ -6,9 +6,9 @@ import br.gov.dere.domain.layout.CsvDocument;
 import br.gov.dere.domain.layout.LayoutCode;
 import br.gov.dere.domain.layout.LayoutDefinition;
 import br.gov.dere.domain.layout.LayoutVersion;
-import br.gov.dere.domain.layout.ValidationContext;
-import br.gov.dere.domain.layout.ValidationIssue;
-import br.gov.dere.domain.layout.ValidationResult;
+import br.gov.dere.domain.layout.ContextoValidacao;
+import br.gov.dere.domain.layout.ProblemaValidacao;
+import br.gov.dere.domain.layout.ResultadoValidacao;
 import br.gov.dere.domain.layout.XmlDocument;
 import br.gov.dere.domain.pgcc.D1011;
 import java.util.ArrayList;
@@ -26,9 +26,9 @@ public class D1011LayoutDefinition implements LayoutDefinition<D1011> {
   @Override public String schemaLocation() { return SCHEMA; }
   @Override public D1011 parseXml(XmlDocument document) throws Exception { return csv.fromXml(document.content()); }
   @Override public D1011 parseCsv(CsvDocument document) { return csv.fromCsv(document.content()); }
-  @Override public ValidationResult validate(D1011 model, ValidationContext context) {
-    var issues = new ArrayList<ValidationIssue>();
-    if (model == null) return new ValidationResult(java.util.List.of(error("MODEL_EMPTY", "", "Modelo canônico ausente")));
+  @Override public ResultadoValidacao validate(D1011 model, ContextoValidacao context) {
+    var issues = new ArrayList<ProblemaValidacao>();
+    if (model == null) return new ResultadoValidacao(java.util.List.of(error("MODEL_EMPTY", "", "Modelo canônico ausente")));
     if (model.id() == null || model.id().isBlank()) issues.add(error("ID_REQUIRED", "id", "Identificador do evento obrigatório"));
     if (model.cnpjRoot() == null || model.cnpjRoot().isBlank()) issues.add(error("TAXPAYER_REQUIRED", "nrInsc", "Identificação do contribuinte obrigatória"));
     if (model.validFrom() == null) issues.add(error("VALIDITY_REQUIRED", "iniValid", "Início de vigência obrigatório"));
@@ -41,9 +41,9 @@ public class D1011LayoutDefinition implements LayoutDefinition<D1011> {
       if (account.validFrom() == null) issues.add(error("ACCOUNT_VALIDITY_REQUIRED", "iniVig", "Início de vigência da conta obrigatório"));
       if (account.validTo() != null && account.validFrom() != null && account.validTo().isBefore(account.validFrom())) issues.add(error("ACCOUNT_VALIDITY_ORDER", "fimVig", "Fim de vigência da conta anterior ao início"));
     }
-    return new ValidationResult(issues);
+    return new ResultadoValidacao(issues);
   }
   @Override public XmlDocument generateXml(D1011 model) throws Exception { return new XmlDocument(xml.generate(model)); }
   @Override public CsvDocument generateCsv(D1011 model) { return new CsvDocument(csv.toCsv(model)); }
-  private static ValidationIssue error(String code, String field, String message) { return new ValidationIssue("BUSINESS", code, field, message, ValidationIssue.Severity.ERROR); }
+  private static ProblemaValidacao error(String code, String field, String message) { return new ProblemaValidacao("BUSINESS", code, field, message, ProblemaValidacao.Severity.ERROR); }
 }

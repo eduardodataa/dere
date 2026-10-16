@@ -9,7 +9,7 @@ public interface DereLayoutHandler<T> {
 
   T parseCsv(CsvDocument document);
 
-  ValidationResult validate(T model, ValidationContext context) throws Exception;
+  ResultadoValidacao validate(T model, ContextoValidacao context) throws Exception;
 
   XmlDocument generateXml(T model) throws Exception;
 

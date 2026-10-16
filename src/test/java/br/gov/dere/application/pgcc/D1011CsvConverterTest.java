@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.gov.dere.domain.layout.CsvDocument;
-import br.gov.dere.domain.layout.ValidationContext;
+import br.gov.dere.domain.layout.ContextoValidacao;
 import br.gov.dere.application.layout.D1011LayoutDefinition;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +16,7 @@ class D1011CsvConverterTest {
     var model = definition.parseCsv(new CsvDocument(csv));
     assertEquals("D-1011", definition.layout().displayName());
     assertEquals(1, model.accounts().size());
-    assertTrue(definition.validate(model, new ValidationContext(1L, null)).valid());
+    assertTrue(definition.validate(model, new ContextoValidacao(1L, null)).valid());
     var xml = definition.generateXml(model);
     assertTrue(xml.content().contains("evtPGCC"));
     assertTrue(xml.content().contains("1.1.01"));

@@ -8,9 +8,9 @@ import br.gov.dere.domain.layout.DereLayoutHandler;
 import br.gov.dere.domain.layout.LayoutCode;
 import br.gov.dere.domain.layout.LayoutDefinition;
 import br.gov.dere.domain.layout.LayoutVersion;
-import br.gov.dere.domain.layout.ValidationContext;
-import br.gov.dere.domain.layout.ValidationIssue;
-import br.gov.dere.domain.layout.ValidationResult;
+import br.gov.dere.domain.layout.ContextoValidacao;
+import br.gov.dere.domain.layout.ProblemaValidacao;
+import br.gov.dere.domain.layout.ResultadoValidacao;
 import br.gov.dere.domain.layout.XmlDocument;
 import br.gov.dere.integration.xml.XmlSupport;
 import java.util.ArrayList;
@@ -50,11 +50,11 @@ public class D1001LayoutDefinition implements LayoutDefinition<D1001> {
   }
 
   @Override
-  public ValidationResult validate(D1001 model, ValidationContext context) {
-    var issues = new ArrayList<ValidationIssue>();
+  public ResultadoValidacao validate(D1001 model, ContextoValidacao context) {
+    var issues = new ArrayList<ProblemaValidacao>();
     if (model == null) {
       issues.add(error("MODEL_EMPTY", "", "Modelo canônico ausente"));
-      return new ValidationResult(issues);
+      return new ResultadoValidacao(issues);
     }
     if (context != null && context.entityId() == null) {
       issues.add(error("ENTITY_REQUIRED", "", "Entidade de contexto obrigatória"));
@@ -71,7 +71,7 @@ public class D1001LayoutDefinition implements LayoutDefinition<D1001> {
     if (model.validTo() != null && model.validFrom() != null && model.validTo().isBefore(model.validFrom())) {
       issues.add(error("VALIDITY_ORDER", "fimValid", "Fim de vigência anterior ao início"));
     }
-    return new ValidationResult(issues);
+    return new ResultadoValidacao(issues);
   }
 
   @Override
@@ -84,7 +84,7 @@ public class D1001LayoutDefinition implements LayoutDefinition<D1001> {
     return new CsvDocument(csv.toCsv(model));
   }
 
-  private static ValidationIssue error(String code, String field, String message) {
-    return new ValidationIssue("BUSINESS", code, field, message, ValidationIssue.Severity.ERROR);
+  private static ProblemaValidacao error(String code, String field, String message) {
+    return new ProblemaValidacao("BUSINESS", code, field, message, ProblemaValidacao.Severity.ERROR);
   }
 }

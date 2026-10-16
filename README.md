@@ -314,7 +314,7 @@ O backend requer Java 21 e Maven 3.9+. Os testes previstos cobrem geração XML,
 - adicionar autenticação real com sessão/JWT, perfis e MFA;
 - completar auditoria de validações CSV independentes;
 - criar histórico visual de lotes, protocolos, recibos e relatórios;
-- conectar `DereTransmissionClient` ao ambiente oficial;
+- conectar `ClienteTransmissaoDere` ao ambiente oficial;
 - obter credenciais Receita Integra e validar escopos;
 - criar infraestrutura isolada de homologação/produção;
 - configurar backup, restore, monitoramento, alertas e CI/CD;

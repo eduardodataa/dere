@@ -112,7 +112,7 @@ Para uso real, implementar antes do go-live:
 - verificação pós-assinatura e validação XSD do evento e do lote;
 - teste oficial de rejeição por certificado inválido/expirado.
 
-Conclusão: a assinatura está funcional para demonstração local, mas ainda não é segura nem suficiente como módulo de produção. O próximo passo é substituir `LocalTestCertificate` por um provider de certificado gerenciado.
+Conclusão: a assinatura está funcional para demonstração local, mas ainda não é segura nem suficiente como módulo de produção. O próximo passo é substituir `CertificadoTesteLocal` por um provider de certificado gerenciado.
 
 ## Plano por marco de entrega
 

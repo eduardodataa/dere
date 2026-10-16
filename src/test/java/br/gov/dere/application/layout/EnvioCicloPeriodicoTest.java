@@ -7,7 +7,7 @@ import br.gov.dere.application.periodico.D1101CsvConverter;
 import br.gov.dere.application.periodico.D1101XmlGenerator;
 import br.gov.dere.application.periodico.D1199CsvConverter;
 import br.gov.dere.application.periodico.D1199XmlGenerator;
-import br.gov.dere.application.validation.ValidadorCamposCsv;
+import br.gov.dere.application.validacao.ValidadorCamposCsv;
 import br.gov.dere.integration.xml.XmlSupport;
 import java.nio.file.Files;
 import java.nio.file.Path;

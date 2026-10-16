@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import br.gov.dere.domain.layout.CsvDocument;
 import br.gov.dere.domain.layout.LayoutCode;
-import br.gov.dere.domain.layout.ValidationContext;
+import br.gov.dere.domain.layout.ContextoValidacao;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +35,7 @@ class DereLayoutRegistryTest {
 
     assertEquals("ID1", model.id());
     assertEquals("ID1", d1001.parseXml(d1001.generateXml(model)).id());
-    assertEquals(true, d1001.validate(model, new ValidationContext(1L, null)).valid());
+    assertEquals(true, d1001.validate(model, new ContextoValidacao(1L, null)).valid());
     assertEquals(LayoutCode.D1001, d1001.layout());
   }
 }

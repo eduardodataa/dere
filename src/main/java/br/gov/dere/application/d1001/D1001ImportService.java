@@ -2,9 +2,9 @@ package br.gov.dere.application.d1001;
 
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.csv.DereCsvConverter;
-import br.gov.dere.application.validation.ServicoValidacaoLeiaute;
-import br.gov.dere.application.validation.relatorio.Critica;
-import br.gov.dere.application.validation.relatorio.RelatorioValidacao;
+import br.gov.dere.application.validacao.ServicoValidacaoLeiaute;
+import br.gov.dere.application.validacao.relatorio.Critica;
+import br.gov.dere.application.validacao.relatorio.RelatorioValidacao;
 import br.gov.dere.domain.contributor.D1001;
 import br.gov.dere.integration.xml.XmlSupport;
 import java.io.ByteArrayInputStream;

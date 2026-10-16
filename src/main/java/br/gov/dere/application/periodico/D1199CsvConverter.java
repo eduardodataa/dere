@@ -1,6 +1,6 @@
 package br.gov.dere.application.periodico;
 
-import br.gov.dere.application.validation.TabelaCsv;
+import br.gov.dere.application.validacao.TabelaCsv;
 import br.gov.dere.domain.periodico.D1199;
 import br.gov.dere.domain.periodico.D1199Base;
 import br.gov.dere.domain.periodico.D1199Detalhe;
