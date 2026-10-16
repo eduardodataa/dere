@@ -100,12 +100,14 @@ jobs:
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-poc-${GITHUB_RUN_ID}.jar"
           scp -o StrictHostKeyChecking=yes \
             scripts/deploy/deploy.sh \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/deploy-${GITHUB_RUN_ID}.sh"
+          scp -o StrictHostKeyChecking=yes \
             "${{ steps.env.outputs.config }}" \
-            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/dere-${GITHUB_RUN_ID}.conf"
 
       - name: Restart service
         run: |
           ssh -o StrictHostKeyChecking=yes "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "set -euo pipefail
-          chmod +x /tmp/deploy.sh
-          sudo bash /tmp/deploy.sh /tmp/$(basename ${{ steps.env.outputs.config }}) /tmp/dere-poc-${GITHUB_RUN_ID}.jar
-          rm -f /tmp/dere-poc-${GITHUB_RUN_ID}.jar /tmp/deploy.sh /tmp/$(basename ${{ steps.env.outputs.config }})"
+          chmod +x /tmp/deploy-${GITHUB_RUN_ID}.sh
+          sudo bash /tmp/deploy-${GITHUB_RUN_ID}.sh /tmp/dere-${GITHUB_RUN_ID}.conf /tmp/dere-poc-${GITHUB_RUN_ID}.jar
+          rm -f /tmp/dere-poc-${GITHUB_RUN_ID}.jar /tmp/deploy-${GITHUB_RUN_ID}.sh /tmp/dere-${GITHUB_RUN_ID}.conf"
