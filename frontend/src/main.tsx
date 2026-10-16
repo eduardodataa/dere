@@ -2,9 +2,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
-import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, Divider, Drawer, FormControlLabel, Grid, List, ListItemButton, ListItemText, MenuItem, Paper, Stack, Switch, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, Divider, Drawer, FormControlLabel, Grid, LinearProgress, List, ListItemButton, ListItemText, MenuItem, Paper, Stack, Switch, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
 import './style.css';
 import logotipoDataA from './dataa-logotipo.png';
+import seloDere from './dere-selo.jpg';
 
 const apiPrefix = (window.location.pathname.match(/^\/dere(?:-stg|-hml)?(?=\/|$)/) || [''])[0];
 const api = axios.create();
@@ -21,6 +22,60 @@ function nomeCsvDaOrigem(nome) {
   if (!nome) return 'convertido.csv';
   const base = nome.replace(/^.*[\\/]/, '');
   return base.replace(/\.(xml|zip)$/i, '.csv');
+}
+
+function raizCnpj(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '');
+  return digitos.length >= 8 ? digitos.slice(0, 8) : '';
+}
+
+function gravidadeAviso(texto) {
+  if (/falha|inválid|obrigatór|informe|erro|unprocessable|recus/i.test(texto)) return 'error';
+  if (/sucesso|salva|excluíd|cadastrad|atualizad|armazenad|enviado\.|validado/i.test(texto)) return 'success';
+  return 'info';
+}
+
+function textoErroConsulta(error) {
+  const data = error.response?.data;
+  const bruto = data?.message && data.message !== data.error ? data.message : data?.detail;
+  if (!bruto) return 'Falha ao consultar o protocolo na Receita.';
+  if (/Duplicate entry|SQL|constraint|could not execute|uk_transmission_attempt/i.test(bruto)) {
+    return 'Não foi possível gravar esta consulta do protocolo. Consulte de novo para atualizar o retorno.';
+  }
+  return bruto;
+}
+
+const TENTATIVAS_ENVIO = 3;
+const ESPERA_RETRY_MS = 1500;
+
+function tituloHttp(valor) {
+  return /unprocessable|internal server error|bad gateway|bad request|conflict|not found|forbidden|unauthorized/i.test(String(valor || ''));
+}
+
+function textoErroEnvio(error) {
+  if (!error.response) return 'Falha de comunicação com a Receita Federal. Verifique a conexão e tente novamente.';
+  const data = error.response.data;
+  const texto = [data?.message, data?.detail, data?.title, data?.error].find(item => item && !tituloHttp(item));
+  if (texto) {
+    if (/Duplicate entry|SQL|constraint|could not execute|uk_transmission_attempt/i.test(texto)) {
+      return 'O envio chegou à Receita, mas não foi possível gravar o retorno local. Tente novamente.';
+    }
+    return texto;
+  }
+  const status = error.response.status;
+  if (status === 502 || status === 503 || status === 504) return 'A Receita Federal não respondeu. Tente novamente.';
+  if (status === 408 || status === 429) return 'A Receita Federal está ocupada ou a conexão expirou. Tente novamente.';
+  return 'Falha no envio à Receita Federal.';
+}
+
+function falhaComunicacao(error) {
+  if (!error.response) return true;
+  const status = error.response.status;
+  return status === 408 || status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+function esperar(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function baixar(nome, conteudo) {
@@ -71,7 +126,10 @@ function lerMenusVisiveis() {
     const bruto = localStorage.getItem(CHAVE_MENUS);
     if (!bruto) return {};
     const lido = JSON.parse(bruto);
-    return lido && typeof lido === 'object' ? lido : {};
+    if (!lido || typeof lido !== 'object') return {};
+    const renomeados = { 'D-1001': 'Enviar D-1001', 'D-1011': 'Enviar D-1011', 'D-1101': 'Enviar D-1101', 'D-1199': 'Enviar D-1199' };
+    Object.entries(renomeados).forEach(([antigo, novo]) => { if (lido[antigo] !== undefined && lido[novo] === undefined) lido[novo] = lido[antigo]; });
+    return lido;
   } catch {
     return {};
   }
@@ -91,6 +149,15 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     schemaVersion: 'nota_2026_001',
   });
   const [carregando, setCarregando] = useState(false);
+  const [implantacao, setImplantacao] = useState('local');
+  const canalTravado = implantacao === 'staging' || implantacao === 'homologacao' || implantacao === 'producao';
+  const avisoCanal = implantacao === 'staging'
+    ? 'Neste ambiente o envio é somente simulado.'
+    : implantacao === 'homologacao'
+      ? 'Neste ambiente o envio é somente de pré-produção.'
+      : implantacao === 'producao'
+        ? 'Neste ambiente o envio é somente de produção.'
+        : '';
 
   useEffect(() => {
     if (!uid || !master) return;
@@ -98,6 +165,13 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
       .then(response => setIntegracao(atual => ({ ...atual, ...response.data, clientSecret: '' })))
       .catch(() => setMessage('Falha ao carregar configurações de integração.'));
   }, [api, uid, master, setMessage]);
+  useEffect(() => {
+    const daUrl = ambienteDaUrl();
+    if (daUrl.codigo !== 'local') setImplantacao(daUrl.codigo);
+    api.get('/api/ambiente').then(response => {
+      if (daUrl.codigo === 'local' && response.data?.codigo) setImplantacao(response.data.codigo);
+    }).catch(() => {});
+  }, [api]);
 
   async function salvarIntegracao() {
     if (!master) { setMessage('Apenas usuário master altera a integração.'); return; }
@@ -121,13 +195,14 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     <Typography variant="h6">Integração com a Receita Federal</Typography>
     <Typography color="text.secondary">Parâmetros do envio. O adaptador real usa OAuth (Receita Integra) e as URLs oficiais. O client secret não é reexibido após salvar.</Typography>
     {!master ? <Alert severity="warning">Somente usuário master pode alterar estes parâmetros.</Alert> : null}
-    <FormControlLabel control={<Switch checked={!!integracao.realAdapterEnabled} disabled={!master} onChange={event => setIntegracao(atual => ({ ...atual, realAdapterEnabled: event.target.checked }))} />} label="Adaptador real (Receita Federal)" />
-    <FormControlLabel control={<Switch checked={!!integracao.mockEnabled} disabled={!master || !!integracao.realAdapterEnabled} onChange={event => setIntegracao(atual => ({ ...atual, mockEnabled: event.target.checked }))} />} label="Envio simulado (mock)" />
-    <TextField label="URL base (produção)" fullWidth disabled={!master} value={integracao.baseUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, baseUrl: event.target.value }))} helperText="Ex.: https://api.receitafederal.gov.br/dere" />
+    {avisoCanal ? <Alert severity="info">{avisoCanal}</Alert> : null}
+    <FormControlLabel control={<Switch checked={!!integracao.realAdapterEnabled} disabled={!master || canalTravado} onChange={event => setIntegracao(atual => ({ ...atual, realAdapterEnabled: event.target.checked }))} />} label="Adaptador real (Receita Federal)" />
+    <FormControlLabel control={<Switch checked={!!integracao.mockEnabled} disabled={!master || canalTravado || !!integracao.realAdapterEnabled} onChange={event => setIntegracao(atual => ({ ...atual, mockEnabled: event.target.checked }))} />} label="Envio simulado (mock)" />
+    <TextField label="URL base" fullWidth disabled={!master || canalTravado} value={integracao.baseUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, baseUrl: event.target.value }))} helperText="Ex.: https://api.receitafederal.gov.br/prr-dere" />
     <TextField label="URL do token (Receita Integra)" fullWidth disabled={!master} value={integracao.tokenUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, tokenUrl: event.target.value }))} />
     <TextField label="Client ID" fullWidth disabled={!master} value={integracao.clientId || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientId: event.target.value }))} />
     <TextField label="Client secret" type="password" fullWidth disabled={!master} value={integracao.clientSecret || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientSecret: event.target.value }))} helperText={integracao.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} />
-    <TextField label="Ambiente" fullWidth disabled={!master} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
+    <TextField label="Ambiente" fullWidth disabled={!master || canalTravado} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
     <TextField label="Versão de schema" fullWidth disabled={!master} value={integracao.schemaVersion || ''} onChange={event => setIntegracao(atual => ({ ...atual, schemaVersion: event.target.value }))} />
     <Box><Button variant="contained" disabled={!master || carregando} onClick={salvarIntegracao}>{carregando ? 'Salvando…' : 'Salvar integração'}</Button></Box>
   </Stack></CardContent></Card>;
@@ -137,7 +212,7 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
 
 function PainelSegurancaCertificado() {
   const [aberto, setAberto] = useState(false);
-  return <Paper variant="outlined" sx={{ p: 2, background: '#f8fafc' }}><Stack spacing={1.5}><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}><Box><Typography variant="subtitle1">Por que é seguro anexar seu certificado aqui?</Typography><Typography color="text.secondary">A chave privada não é enviada à Receita Federal. O sistema transmite apenas o documento já assinado. A senha do certificado é custodiada no AWS Secrets Manager, protegida por AWS KMS, e permanece separada do arquivo. Seu uso ocorre somente em memória, no instante da assinatura. Esse modelo de custódia é o padrão adotado por instituições financeiras e o que há de mais consolidado no mercado para proteção de segredos em nuvem.</Typography></Box><Button variant="outlined" onClick={() => setAberto(atual => !atual)}>{aberto ? 'Recolher' : 'Como funciona'}</Button></Stack><Collapse in={aberto}><Stack spacing={1.5} sx={{ pt: 1 }}><Typography variant="subtitle2">1. Informar a senha</Typography><Typography color="text.secondary">A senha é enviada uma única vez, no mesmo pedido do arquivo, por canal protegido. Este formulário não a retém e ela nunca volta a ser exibida.</Typography><Typography variant="subtitle2">2. Conferência do arquivo</Typography><Typography color="text.secondary">O serviço verifica, em memória, se o arquivo é um certificado digital válido e se a senha corresponde. Havendo inconsistência, nada é armazenado.</Typography><Typography variant="subtitle2">3. Custódia da senha e do arquivo</Typography><Typography color="text.secondary">O arquivo do certificado permanece cifrado no ambiente da aplicação. A senha é mantida em cofre gerenciado (AWS Secrets Manager), com criptografia de ponta de mercado provida pelo AWS KMS — o mesmo padrão de proteção de chaves adotado por bancos e demais instituições financeiras. Arquivo e senha não tramitam juntos nem compartilham o mesmo repositório de dados de negócio.</Typography><Typography variant="subtitle2">4. Controle de acesso</Typography><Typography color="text.secondary">O certificado fica vinculado à entidade. Somente usuários autorizados dessa entidade podem utilizá-lo. A exclusão o desativa imediatamente.</Typography><Typography variant="subtitle2">5. Assinatura da declaração</Typography><Typography color="text.secondary">No envio, o certificado é aberto apenas em memória e o documento é assinado com criptografia de ponta de mercado. A Receita recebe o XML autenticado e o certificado público necessário à verificação. A chave privada não integra o arquivo transmitido.</Typography><Typography variant="subtitle2">6. Encaminhamento à Receita</Typography><Typography color="text.secondary">O lote contém o documento assinado. A chave privada permanece no ambiente da aplicação somente durante essa operação e não é retransmitida.</Typography><Typography variant="body2">Anexe apenas certificado A1 de sua titularidade. Não compartilhe o arquivo nem a senha por canais não seguros.</Typography></Stack></Collapse></Stack></Paper>;
+  return <Paper variant="outlined" sx={{ p: 2, background: '#f8fafc' }}><Stack spacing={1.5}><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}><Typography variant="subtitle1">Por que é seguro anexar seu certificado aqui?</Typography><Button variant="outlined" onClick={() => setAberto(atual => !atual)} sx={{ flexShrink: 0 }}>{aberto ? 'Recolher' : 'Como funciona'}</Button></Stack><Typography color="text.secondary">A chave privada não é enviada à Receita Federal. O sistema transmite apenas o documento já assinado. A senha do certificado é custodiada no AWS Secrets Manager, protegida por AWS KMS, e permanece separada do arquivo. Seu uso ocorre somente em memória, no instante da assinatura. Esse modelo de custódia é o padrão adotado por instituições financeiras e o que há de mais consolidado no mercado para proteção de segredos em nuvem.</Typography><Collapse in={aberto}><Stack spacing={1.5} sx={{ pt: 1 }}><Typography variant="subtitle2">1. Informar a senha</Typography><Typography color="text.secondary">A senha é enviada uma única vez, no mesmo pedido do arquivo, por canal protegido. Este formulário não a retém e ela nunca volta a ser exibida.</Typography><Typography variant="subtitle2">2. Conferência do arquivo</Typography><Typography color="text.secondary">O serviço verifica, em memória, se o arquivo é um certificado digital válido e se a senha corresponde. Havendo inconsistência, nada é armazenado.</Typography><Typography variant="subtitle2">3. Custódia da senha e do arquivo</Typography><Typography color="text.secondary">O arquivo do certificado permanece cifrado no ambiente da aplicação. A senha é mantida em cofre gerenciado (AWS Secrets Manager), com criptografia de ponta de mercado provida pelo AWS KMS — o mesmo padrão de proteção de chaves adotado por bancos e demais instituições financeiras. Arquivo e senha não tramitam juntos nem compartilham o mesmo repositório de dados de negócio.</Typography><Typography variant="subtitle2">4. Controle de acesso</Typography><Typography color="text.secondary">O certificado fica vinculado à entidade. Somente usuários autorizados dessa entidade podem utilizá-lo. A exclusão o desativa imediatamente.</Typography><Typography variant="subtitle2">5. Assinatura da declaração</Typography><Typography color="text.secondary">No envio, o certificado é aberto apenas em memória e o documento é assinado com criptografia de ponta de mercado. A Receita recebe o XML autenticado e o certificado público necessário à verificação. A chave privada não integra o arquivo transmitido.</Typography><Typography variant="subtitle2">6. Encaminhamento à Receita</Typography><Typography color="text.secondary">O lote contém o documento assinado. A chave privada permanece no ambiente da aplicação somente durante essa operação e não é retransmitida.</Typography><Typography variant="body2">Anexe apenas certificado A1 de sua titularidade. Não compartilhe o arquivo nem a senha por canais não seguros.</Typography></Stack></Collapse></Stack></Paper>;
 }
 
 function App() {
@@ -166,10 +241,21 @@ function App() {
   useEffect(() => { api.get('/api/admin/entities').then(response => setEntities(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, []);
   useEffect(() => { if (uid && eid) api.get(`/api/certificates/entity/${eid}`).then(response => setCertificados(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, [uid, eid]);
   useEffect(() => { if (message) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [message]);
+  useEffect(() => {
+    if (uid && !master && (page === 'Configurações' || page === 'Entidades' || page === 'Usuários')) setPage('Dashboard');
+  }, [uid, master, page]);
 
   async function signIn() {
     try { const response = await api.post('/api/auth/login', { login, password }); setUid(response.data.userId); setMaster(!!response.data.master); api.defaults.headers.common['X-User-Id'] = response.data.userId; setMessage(''); await load(); }
     catch { setMessage('Login inválido'); }
+  }
+  function signOut() {
+    delete api.defaults.headers.common['X-User-Id'];
+    setUid(undefined);
+    setMaster(false);
+    setPassword('');
+    setMessage('');
+    setPage('Dashboard');
   }
   const entidadeTravada = !master && entities.length <= 1;
   async function recarregarCertificados(entidadeId = eid) {
@@ -186,9 +272,9 @@ function App() {
     } catch (error) { setMessage(error.response?.data?.message || 'Falha ao excluir certificado.'); }
   }
 
-  if (!uid) return <Box className="login-shell"><Card className="login-card"><CardContent><Typography variant="h4" mb={1}>DeRE</Typography><Typography color="text.secondary" mb={3}>Declarações de Regimes Específicos</Typography><Stack spacing={2}><TextField label="Login" value={login} onChange={event => setLogin(event.target.value)} /><TextField label="Senha" type="password" value={password} onChange={event => setPassword(event.target.value)} /><Button variant="contained" size="large" onClick={signIn}>Entrar</Button>{message && <Alert severity="error">{message}</Alert>}</Stack></CardContent></Card></Box>;
+  if (!uid) return <Box className="login-shell"><Stack className="login-bloco" alignItems="center" spacing={3}><img className="selo-login" src={seloDere} alt="DeRE — Declaração de Regimes Específicos" /><Card className="login-card"><CardContent><Typography variant="h4" mb={1}>DeRE</Typography><Typography color="text.secondary" mb={3}>Declarações de Regimes Específicos</Typography><Stack spacing={2}><TextField label="Login" value={login} onChange={event => setLogin(event.target.value)} /><TextField label="Senha" type="password" value={password} onChange={event => setPassword(event.target.value)} /><Button variant="contained" size="large" onClick={signIn}>Entrar</Button>{message && <Alert severity="error">{message}</Alert>}</Stack></CardContent></Card></Stack></Box>;
 
-  const menu = ['Dashboard', 'D-1001', 'D-1011', 'D-1101', 'D-1199', 'Importações', 'Validações', 'Certificado Digital', 'Transmissões', 'Configurações', 'Entidades', ...(master ? ['Usuários'] : [])];
+  const menu = ['Dashboard', 'Enviar D-1001', 'Enviar D-1011', 'Enviar D-1101', 'Enviar D-1199', 'Importações', 'Validações', 'Certificado Digital', 'Transmissões', ...(master ? ['Configurações', 'Entidades', 'Usuários'] : [])];
   const menuExibido = menu.filter(item => item === 'Configurações' || menusVisiveis[item] !== false);
   function alternarMenu(item, marcado) {
     setMenusVisiveis(atual => {
@@ -198,11 +284,11 @@ function App() {
     });
     if (!marcado && page === item) setPage('Configurações');
   }
-  const workspacePages = ['D-1001', 'D-1011', 'D-1101', 'D-1199'];
+  const workspacePages = ['Enviar D-1001', 'Enviar D-1011', 'Enviar D-1101', 'Enviar D-1199'];
   const currentEntity = entities.find(entity => entity.id === eid);
   const workspaceProps = { api, uid, eid, entities, setEid, setMessage, master };
   const cartaoCertificado = <Card><CardContent><Stack spacing={2}><PainelSegurancaCertificado /><Typography variant="h6">Certificado A1</Typography><Typography color="text.secondary">A senha não é reexibida após o armazenamento. Ela permanece no AWS Secrets Manager, protegida por AWS KMS. O arquivo do certificado fica cifrado à parte e é utilizado somente para assinar a declaração.</Typography><TextField select fullWidth label="Entidade" value={eid} disabled={entidadeTravada} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><TextField label="Nome" value={certLabel} onChange={event => setCertLabel(event.target.value)} /><Button component="label" variant="outlined">Selecionar P12/PFX<input hidden type="file" accept=".p12,.pfx" onChange={event => setCertFile(event.target.files?.[0])} /></Button>{certFile ? <Typography color="text.secondary">Arquivo: {certFile.name}</Typography> : null}<TextField label="Senha do certificado" type="password" value={certPassword} onChange={event => setCertPassword(event.target.value)} /><Button variant="contained" onClick={armazenarCertificado}>Armazenar certificado</Button><Divider />{certificados.map(cert => <Box key={cert.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, borderBottom: '1px solid #e5e7eb', py: 1.5 }}><Box><Typography>{cert.label} · {cert.alias}</Typography><Typography variant="body2" color="text.secondary">Titular: {cert.subject || '—'}</Typography><Typography variant="body2" color="text.secondary">Emissor: {cert.issuer || '—'}</Typography><Typography variant="body2" color="text.secondary">Emissão: {formatarDataEnvio(cert.issuedAt)} · Validade: {formatarDataEnvio(cert.validUntil)}</Typography></Box><Stack direction="row" spacing={1} alignItems="center"><Chip color={cert.icpBrasil ? 'success' : 'default'} label={cert.icpBrasil ? 'ICP-Brasil' : 'Fora da ICP-Brasil'} /><Chip color={cert.status === 'VALID' ? 'success' : 'warning'} label={cert.status === 'EXPIRING_SOON' ? `vence em ${cert.daysUntilExpiry} dias` : cert.status} /><Button size="small" color="error" onClick={() => excluirCertificado(cert)}>Excluir</Button></Stack></Box>)}</Stack></CardContent></Card>;
-  return <Box className="app-shell"><Drawer variant="permanent" className="sidebar"><Box className="brand"><img className="marca" src={logotipoDataA} alt="Data A" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box><List>{menuExibido.map(item => <ListItemButton selected={page === item} onClick={() => { setPage(item); setMessage(''); }} key={item}><ListItemText primary={item} /></ListItemButton>)}</List></Drawer><Box component="main" className="content"><Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}><Box><Typography variant="h4">{page}</Typography><Typography color="text.secondary">Operação local da declaração</Typography></Box><Chip label={currentEntity?.legalName || 'Entidade não selecionada'} /></Stack>{message && <Alert sx={{ mb: 3 }} severity="info">{message}</Alert>}{page === 'Dashboard' ? <Dashboard onImport={() => setPage('D-1001')} /> : null}<Box hidden={page !== 'D-1001'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1001" /></Box><Box hidden={page !== 'D-1011'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1011" /></Box><Box hidden={page !== 'D-1101'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1101" /></Box><Box hidden={page !== 'D-1199'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1199" /></Box>{page === 'Importações' ? <Alert severity="info">A conversão CSV/XML fica em D-1001 e D-1011. Este menu será o histórico de lotes (arquivo, layout, entidade, status e críticas).</Alert> : null}{page === 'Validações' ? <Alert severity="info">Validações será o relatório das críticas já apuradas nos lotes. A validação de um arquivo novo é feita no menu do layout.</Alert> : null}{page === 'Transmissões' ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} /> : null}{page === 'Configurações' ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} /> : page === 'Certificado Digital' ? cartaoCertificado : page === 'Entidades' ? <EntityAdmin api={api} onChanged={load} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : !['Dashboard', 'Certificado Digital', 'Importações', 'Validações', 'Transmissões', 'Entidades', 'Configurações', ...workspacePages].includes(page) && !(page === 'Usuários' && master) ? <Alert severity="info">O módulo {page} está preparado para a próxima integração.</Alert> : null}</Box></Box>;
+  return <Box className="app-shell"><Drawer variant="permanent" className="sidebar"><Box className="brand"><img className="marca" src={logotipoDataA} alt="maps + Data A" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box><List>{menuExibido.map(item => <ListItemButton selected={page === item} onClick={() => { setPage(item); setMessage(''); }} key={item}><ListItemText primary={item} /></ListItemButton>)}</List></Drawer><Box component="main" className="content"><Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}><Box><Typography variant="h4">{page}</Typography><Typography color="text.secondary">Operação local da declaração</Typography></Box><Stack direction="row" spacing={1.5} alignItems="center"><Chip label={currentEntity?.legalName || 'Entidade não selecionada'} /><Button variant="outlined" onClick={signOut}>Sair</Button><img className="selo-topo" src={seloDere} alt="DeRE" /></Stack></Stack>{message && <Alert sx={{ mb: 3 }} severity={gravidadeAviso(message)}>{message}</Alert>}{page === 'Dashboard' ? <Dashboard onImport={() => setPage('Enviar D-1001')} /> : null}<Box hidden={page !== 'Enviar D-1001'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1001" /></Box><Box hidden={page !== 'Enviar D-1011'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1011" /></Box><Box hidden={page !== 'Enviar D-1101'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1101" /></Box><Box hidden={page !== 'Enviar D-1199'}><ImportWorkspace {...workspaceProps} lockedLayout="D-1199" /></Box>{page === 'Importações' ? <Alert severity="info">A conversão CSV/XML fica em D-1001 e D-1011. Este menu será o histórico de lotes (arquivo, layout, entidade, status e críticas).</Alert> : null}{page === 'Validações' ? <Alert severity="info">Validações será o relatório das críticas já apuradas nos lotes. A validação de um arquivo novo é feita no menu do layout.</Alert> : null}{page === 'Transmissões' ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} /> : null}{page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} /> : page === 'Certificado Digital' ? cartaoCertificado : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={load} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : !['Dashboard', 'Certificado Digital', 'Importações', 'Validações', 'Transmissões', 'Entidades', 'Configurações', ...workspacePages].includes(page) && !(page === 'Usuários' && master) ? <Alert severity="info">O módulo {page} está preparado para a próxima integração.</Alert> : null}</Box></Box>;
 }
 
 function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLayout, master }) {
@@ -213,20 +299,24 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
   const [csvText, setCsvText] = useState('');
   const [arquivoCsv, setArquivoCsv] = useState();
   const [codificacao, setCodificacao] = useState('UTF-8');
-  const [simularEnvio, setSimularEnvio] = useState(false);
+  const [validando, setValidando] = useState(false);
+  const [aba, setAba] = useState(0);
   const [envio, setEnvio] = useState();
   const [listaEnvio, setListaEnvio] = useState(0);
+  const [enviando, setEnviando] = useState(false);
+  const [progressoEnvio, setProgressoEnvio] = useState('');
+  const [erroEnvio, setErroEnvio] = useState('');
   const currentLayout = lockedLayout || layout;
   const critiques = (uploadResult?.arquivos || []).flatMap(arquivo => (arquivo.criticas || []).map(item => ({ arquivo: arquivo.nomeArquivo, idEvento: arquivo.idEvento, ...item })));
   const subtitle = lockedLayout === 'D-1001'
-    ? 'Envie CSV ou XML do D-1001 para análise.'
+    ? 'Escolha um CSV, XML ou ZIP do D-1001. A validação começa ao selecionar o arquivo.'
     : lockedLayout === 'D-1011'
-      ? 'Envie CSV ou XML do D-1011 para análise.'
+      ? 'Escolha um CSV ou XML do D-1011. A validação começa ao selecionar o arquivo.'
       : lockedLayout === 'D-1101'
-        ? 'Envie CSV ou XML do D-1101 (Balancete Mensal) para análise.'
+        ? 'Escolha um CSV ou XML do D-1101 (Balancete Mensal). A validação começa ao selecionar o arquivo.'
         : lockedLayout === 'D-1199'
-          ? 'Envie CSV ou XML do D-1199 (Fechamento Mensal). Somente inclusão.'
-          : 'Selecione o layout e envie CSV ou XML para análise.';
+          ? 'Escolha um CSV ou XML do D-1199 (Fechamento Mensal). Somente inclusão.'
+          : 'Escolha o leiaute e um CSV, XML ou ZIP. A validação começa ao selecionar o arquivo.';
 
   function endpointCsv(leiaute) {
     if (leiaute === 'D-1011') return '/api/layouts/d1011/validate-csv';
@@ -248,47 +338,65 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     baixarBlob(`${codigo}-modelo.csv`, response.data);
   }
 
-  async function uploadXml() {
-    if (!file) { setMessage('Selecione um XML ou ZIP'); return; }
+  async function validarCsvTexto(texto, nome) {
+    if (!String(texto || '').trim()) { setMessage('Selecione um arquivo CSV.'); return; }
+    setValidando(true);
+    try {
+      const endpoint = endpointCsv(currentLayout);
+      const response = await api.post(endpoint, texto, { headers: { 'Content-Type': 'text/csv', 'X-Entity-Id': eid } });
+      setCsvResult(response.data);
+      setUploadResult(undefined);
+      setMessage(response.data.valido ? `${nome || currentLayout} validado. O XML pode ser baixado ou enviado.` : `${nome || currentLayout} possui críticas.`);
+    } catch (error) { setMessage(error.response?.data?.message || error.response?.data?.error || error.response?.data?.detail || 'Falha na validação CSV'); }
+    finally { setValidando(false); }
+  }
+
+  async function validarArquivoXml(arquivo) {
+    setValidando(true);
     try {
       const xmlEndpoint = endpointXml(currentLayout);
       if (xmlEndpoint) {
-        const xml = await file.text();
+        if (arquivo.name.toLowerCase().endsWith('.zip')) { setMessage('Este leiaute valida um XML. O ZIP de lote fica no D-1001.'); return; }
+        const xml = await arquivo.text();
         const response = await api.post(xmlEndpoint, xml, { headers: { 'Content-Type': 'application/xml', 'X-Entity-Id': eid } });
         setCsvResult(response.data);
         setUploadResult(undefined);
         setMessage(response.data.valido ? `XML ${currentLayout} validado.` : `XML ${currentLayout} possui críticas.`);
-        if (response.data.valido && simularEnvio) await enviarSimulado('XML', xml, file.name);
         return;
       }
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', arquivo);
       const response = await api.post('/api/layouts/d1001/import', form, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
       setUploadResult(response.data);
+      setCsvResult(undefined);
       setMessage(response.data.quantidadeInvalidos ? 'Foram encontradas críticas no lote.' : 'Lote validado sem críticas.');
-      if (!response.data.quantidadeInvalidos && simularEnvio) {
-        await enviarLoteValidado(response.data, file);
-      }
     } catch (error) { setMessage(error.response?.data?.message || error.response?.data?.error || error.response?.data?.detail || 'Falha no upload/validação'); }
+    finally { setValidando(false); }
   }
 
-  async function validateCsv() {
-    if (!csvText.trim()) { setMessage('Selecione um arquivo CSV.'); return; }
-    try {
-      const endpoint = endpointCsv(currentLayout);
-      const response = await api.post(endpoint, csvText, { headers: { 'Content-Type': 'text/csv', 'X-Entity-Id': eid } });
-      setCsvResult(response.data);
-      setMessage(response.data.valido ? `${currentLayout} validado com sucesso.` : `${currentLayout} possui críticas.`);
-      if (response.data.valido && simularEnvio) await enviarSimulado('CSV', csvText, arquivoCsv?.name || `${currentLayout.toLowerCase()}.csv`);
-    } catch (error) { setMessage(error.response?.data?.message || error.response?.data?.error || error.response?.data?.detail || 'Falha na validação CSV'); }
+  async function postarEnvio(origem, conteudo, nome) {
+    let ultimo;
+    for (let tentativa = 1; tentativa <= TENTATIVAS_ENVIO; tentativa++) {
+      setProgressoEnvio(tentativa === 1
+        ? 'Enviando à Receita Federal…'
+        : `Falha de comunicação. Nova tentativa ${tentativa} de ${TENTATIVAS_ENVIO}…`);
+      try {
+        return await api.post('/api/transmissions/simulate', { layout: currentLayout, origem, arquivo: nome, conteudo }, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
+      } catch (error) {
+        ultimo = error;
+        if (!falhaComunicacao(error) || tentativa === TENTATIVAS_ENVIO) throw error;
+        await esperar(ESPERA_RETRY_MS);
+      }
+    }
+    throw ultimo;
   }
 
   async function enviarSimulado(origem, conteudo, nome) {
-    const response = await api.post('/api/transmissions/simulate', { layout: currentLayout, origem, arquivo: nome, conteudo }, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
+    const response = await postarEnvio(origem, conteudo, nome);
     setEnvio(response.data);
     setListaEnvio(atual => atual + 1);
-    if (response.data.enviado) setMessage(`${currentLayout} recebido pela Receita (simulado). Protocolo ${response.data.transmissao?.protocol}.`);
-    else setMessage(motivoRecusa(response.data) || 'Envio simulado recusado.');
+    if (response.data.enviado) setMessage(`${currentLayout} enviado. Protocolo ${response.data.transmissao?.protocol}.`);
+    else setMessage(motivoRecusa(response.data) || `${rotuloCanal(response.data?.transmissao)} recusado.`);
     return response.data;
   }
 
@@ -302,7 +410,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
         if (ultimo?.enviado) ok += 1;
         else break;
       }
-      if (ok === eventos.length) setMessage(`${ok} evento(s) do lote recebidos pela Receita (simulado).`);
+      if (ok === eventos.length) setMessage(`${ok} evento(s) do lote enviados. Protocolo ${ultimo?.transmissao?.protocol || '—'}.`);
       else if (ultimo && !ultimo.enviado) setMessage(motivoRecusa(ultimo) || `Envio interrompido após ${ok} sucesso(s).`);
       return;
     }
@@ -330,6 +438,8 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     setCsvResult(undefined);
     setUploadResult(undefined);
     setEnvio(undefined);
+    setErroEnvio('');
+    setProgressoEnvio('');
     setMessage('');
   }
 
@@ -340,41 +450,130 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, lockedLa
     setCsvText('');
   }
 
-  async function aplicarCodificacao(arquivo, valor) {
-    if (!arquivo) return;
-    setCsvText(await lerTextoArquivo(arquivo, valor));
-    setCsvResult(undefined);
-    setUploadResult(undefined);
-  }
-
-  function loadCsvFile(event) {
+  async function carregarArquivo(event) {
     const selected = event.target.files?.[0];
-    limparResultados();
-    setFile(undefined);
-    setArquivoCsv(selected);
-    if (selected) aplicarCodificacao(selected, codificacao);
-    else setCsvText('');
     event.target.value = '';
+    limparDados();
+    if (!selected) return;
+    const nome = selected.name.toLowerCase();
+    if (nome.endsWith('.csv')) {
+      setArquivoCsv(selected);
+      const texto = await lerTextoArquivo(selected, codificacao);
+      setCsvText(texto);
+      await validarCsvTexto(texto, selected.name);
+      return;
+    }
+    if (nome.endsWith('.xml') || nome.endsWith('.zip')) {
+      setFile(selected);
+      await validarArquivoXml(selected);
+      return;
+    }
+    setMessage('Use um arquivo CSV, XML ou ZIP.');
   }
 
-  function loadXmlFile(event) {
-    const selected = event.target.files?.[0];
-    limparResultados();
-    setCsvText('');
-    setArquivoCsv(undefined);
-    setFile(selected);
-    event.target.value = '';
-  }
-
-  function alterarCodificacao(valor) {
+  async function alterarCodificacao(valor) {
     setCodificacao(valor);
-    if (arquivoCsv) aplicarCodificacao(arquivoCsv, valor);
+    if (!arquivoCsv) return;
+    const texto = await lerTextoArquivo(arquivoCsv, valor);
+    setCsvText(texto);
+    await validarCsvTexto(texto, arquivoCsv.name);
   }
 
   const criticasCsv = csvResult?.criticas || [];
   const criticasXml = uploadResult?.criticas || critiques;
   const nomeArquivo = arquivoCsv?.name || file?.name;
-  return <Stack spacing={2}><Card><CardContent><Stack spacing={2}><Typography variant="h6">Importação e validação</Typography><Typography color="text.secondary">{subtitle}</Typography>{!lockedLayout && <TextField select label="Leiaute" value={layout} onChange={event => { setLayout(event.target.value); setCsvResult(undefined); setUploadResult(undefined); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem><MenuItem value="D-1101">D-1101 — Balancete mensal</MenuItem><MenuItem value="D-1199">D-1199 — Fechamento mensal</MenuItem></TextField>}<TextField select fullWidth label="Entidade" value={eid} disabled={!master && entities.length <= 1} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap><Button variant="outlined" onClick={() => baixarModelo().catch(() => setMessage('Falha ao baixar o modelo CSV'))}>Baixar modelo CSV</Button><Button component="label" variant="outlined">Selecionar CSV<input hidden type="file" accept=".csv" onChange={loadCsvFile} /></Button><Button component="label" variant="outlined">Selecionar XML/ZIP<input hidden type="file" accept=".xml,.zip" onChange={loadXmlFile} /></Button><TextField select label="Codificação" value={codificacao} onChange={event => alterarCodificacao(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="UTF-8">UTF-8</MenuItem><MenuItem value="ANSI">ANSI</MenuItem></TextField><Button variant="outlined" color="inherit" onClick={limparDados} disabled={!nomeArquivo && !csvResult && !uploadResult}>Limpar dados</Button></Stack>{nomeArquivo ? <Typography color="text.secondary">Arquivo: {nomeArquivo}{arquivoCsv ? ` · ${codificacao}` : ''}</Typography> : <Typography color="text.secondary">Nenhum arquivo selecionado.</Typography>}<FormControlLabel control={<Checkbox checked={simularEnvio} onChange={event => setSimularEnvio(event.target.checked)} />} label="Simular envio à Receita após validar" /><Stack direction="row" spacing={2}><Button variant="contained" onClick={validateCsv}>Validar CSV</Button><Button variant="contained" color="secondary" onClick={uploadXml}>Processar XML/ZIP</Button><Button variant="outlined" disabled={!simularEnvio || !(csvResult?.valido || (uploadResult && !uploadResult.quantidadeInvalidos))} onClick={async () => { try { await dispararSimulacao(); } catch (error) { setMessage(error.response?.data?.message || error.response?.data?.error || error.response?.data?.detail || 'Falha no envio simulado'); } }}>Simular envio</Button></Stack>{envio && <EnvioSimuladoCard envio={envio} api={api} uid={uid} eid={eid} />}{csvResult && <ResumoResultado resultado={csvResult} rotuloDownload="Baixar XML" aoBaixar={csvResult.xml ? () => baixar(`${currentLayout.toLowerCase()}.xml`, csvResult.xml) : undefined} aoRelatorio={csvResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(arquivoCsv?.name || file?.name || 'arquivo.csv', currentLayout), csvResult.relatorioXlsx) : undefined} criticas={criticasCsv} />}{uploadResult && <ResumoResultado resultado={uploadResult} rotuloDownload="Baixar CSV" aoBaixar={uploadResult.csvConvertido ? () => baixar(nomeCsvDaOrigem(file?.name || uploadResult.nomeOrigem), uploadResult.csvConvertido) : undefined} aoRelatorio={uploadResult.relatorioXlsx ? () => baixarXlsx(nomeXlsx(file?.name || uploadResult.nomeOrigem, currentLayout), uploadResult.relatorioXlsx) : undefined} criticas={criticasXml} />}</Stack></CardContent></Card><PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} layout={currentLayout} reloadToken={listaEnvio} master={master} /></Stack>;
+  const csvValido = Boolean(arquivoCsv) && csvResult?.valido === true && criticasCsv.length === 0;
+  const xmlValido = Boolean(file) && ((csvResult?.valido === true && criticasCsv.length === 0) || (uploadResult && !uploadResult.quantidadeInvalidos && criticasXml.length === 0));
+  const criticasAtivas = arquivoCsv ? criticasCsv : criticasXml;
+  const resultadoAtivo = arquivoCsv ? csvResult : (csvResult || uploadResult);
+  async function enviarArquivo() {
+    setEnviando(true);
+    setErroEnvio('');
+    setProgressoEnvio('Enviando à Receita Federal…');
+    setMessage('Enviando à Receita Federal…');
+    try {
+      await dispararSimulacao();
+      setErroEnvio('');
+    } catch (error) {
+      const texto = textoErroEnvio(error);
+      setErroEnvio(texto);
+      setMessage(texto);
+    } finally {
+      setEnviando(false);
+      setProgressoEnvio('');
+    }
+  }
+  const painelEnvio = <Stack spacing={2}><Card><CardContent><Stack spacing={2}>
+    <Typography variant="h6">Importação e validação</Typography>
+    <Typography color="text.secondary">{subtitle}</Typography>
+    {!lockedLayout && <TextField select label="Leiaute" value={layout} onChange={event => { setLayout(event.target.value); limparDados(); }}><MenuItem value="D-1001">D-1001 — Informações do contribuinte</MenuItem><MenuItem value="D-1011">D-1011 — PGCC</MenuItem><MenuItem value="D-1101">D-1101 — Balancete mensal</MenuItem><MenuItem value="D-1199">D-1199 — Fechamento mensal</MenuItem></TextField>}
+    <TextField select fullWidth label="Entidade" value={eid} disabled={!master && entities.length <= 1} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField>
+    <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Button variant="outlined" onClick={() => baixarModelo().catch(() => setMessage('Falha ao baixar o modelo CSV'))}>Baixar layout CSV</Button>
+      <Button component="label" variant="contained" disabled={validando || enviando}>{validando ? 'Validando…' : 'Selecionar arquivo'}<input hidden type="file" accept=".csv,.xml,.zip" onChange={carregarArquivo} /></Button>
+      {arquivoCsv && <TextField select label="Codificação" value={codificacao} onChange={event => alterarCodificacao(event.target.value)} sx={{ minWidth: 160 }}><MenuItem value="UTF-8">UTF-8</MenuItem><MenuItem value="ANSI">ANSI</MenuItem></TextField>}
+      <Button variant="outlined" color="inherit" onClick={limparDados} disabled={enviando || (!nomeArquivo && !csvResult && !uploadResult)}>Limpar</Button>
+    </Stack>
+    <Typography color="text.secondary">{nomeArquivo ? `Arquivo: ${nomeArquivo}${arquivoCsv ? ` · ${codificacao}` : ''}` : 'Nenhum arquivo selecionado.'}</Typography>
+    {(csvValido || xmlValido) && <Alert severity="success">{csvValido ? 'CSV válido. Baixe o XML ou envie à DeRE.' : 'Arquivo válido. O envio à Receita Federal está liberado.'}</Alert>}
+    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+      {csvValido && csvResult.xml && <Button variant="outlined" disabled={enviando} onClick={() => baixar(`${currentLayout.toLowerCase()}.xml`, csvResult.xml)}>Baixar XML</Button>}
+      {csvValido && <Button variant="contained" disabled={enviando} onClick={enviarArquivo} startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : null}>{enviando ? 'Enviando…' : 'Enviar XML a partir do CSV à DeRE-RFB'}</Button>}
+      {xmlValido && <Button variant="contained" disabled={enviando} onClick={enviarArquivo} startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : null}>{enviando ? 'Enviando…' : 'Enviar à Receita Federal'}</Button>}
+    </Stack>
+    {enviando && <Box><LinearProgress /><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{progressoEnvio || 'Enviando à Receita Federal…'}</Typography></Box>}
+    {erroEnvio && <Alert severity="error" action={<Button color="inherit" size="small" disabled={enviando} onClick={enviarArquivo}>Tentar novamente</Button>}>{erroEnvio}</Alert>}
+    {envio && <EnvioSimuladoCard envio={envio} api={api} uid={uid} eid={eid} />}
+    {criticasAtivas.length > 0 && resultadoAtivo && <ResumoResultado resultado={resultadoAtivo} aoRelatorio={resultadoAtivo.relatorioXlsx ? () => baixarXlsx(nomeXlsx(nomeArquivo, currentLayout), resultadoAtivo.relatorioXlsx) : undefined} criticas={criticasAtivas} />}
+  </Stack></CardContent></Card><PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} layout={currentLayout} reloadToken={listaEnvio} master={master} /></Stack>;
+  return <Stack spacing={2}>
+    <Tabs value={aba} onChange={(_, valor) => setAba(valor)}><Tab label="Envio" /><Tab label="Consultas" /></Tabs>
+    {aba === 0 ? painelEnvio : <PainelConsulta api={api} uid={uid} eid={eid} layout={currentLayout} />}
+  </Stack>;
+}
+
+function PainelConsulta({ api, uid, eid, layout }) {
+  const [protocolo, setProtocolo] = useState('');
+  const [resultado, setResultado] = useState();
+  const [erro, setErro] = useState('');
+  const [consultando, setConsultando] = useState(false);
+  async function consultar() {
+    const numero = protocolo.trim();
+    if (!numero) { setErro('Informe o protocolo.'); setResultado(undefined); return; }
+    setConsultando(true);
+    setErro('');
+    try {
+      const response = await api.post('/api/transmissions/consulta', { protocolo: numero }, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
+      setResultado(response.data);
+    } catch (error) {
+      setResultado(undefined);
+      setErro(textoErroConsulta(error));
+    } finally { setConsultando(false); }
+  }
+  const transmissao = resultado?.transmissao;
+  const outroLeiaute = transmissao?.layout && layout && transmissao.layout !== layout;
+  return <Card><CardContent><Stack spacing={2}>
+    <Typography variant="h6">Consulta na Receita</Typography>
+    <Typography color="text.secondary">Informe o protocolo de recepção do lote. A consulta usa o ambiente configurado em Integração Receita.</Typography>
+    <Stack direction="row" spacing={2} alignItems="flex-start">
+      <TextField label="Protocolo" value={protocolo} onChange={event => setProtocolo(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') consultar(); }} sx={{ minWidth: 360 }} />
+      <Button variant="contained" disabled={consultando} onClick={consultar}>{consultando ? 'Consultando…' : 'Consultar'}</Button>
+    </Stack>
+    {consultando && <Box><LinearProgress /><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Conectando à Receita Federal e consultando o protocolo…</Typography></Box>}
+    {erro && <Alert severity="error">{erro}</Alert>}
+    {resultado?.aviso && <Alert severity="info">{resultado.aviso}</Alert>}
+    {resultado && <Stack spacing={1}>
+      {outroLeiaute && <Alert severity="info">Este protocolo está gravado como {transmissao.layout}.</Alert>}
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        <Chip color="info" label={`Protocolo ${resultado.protocol || '—'}`} />
+        <Chip label={rotuloStatusEnvio(resultado.status)} />
+        <Chip color={resultado.receiptNumber ? 'success' : 'warning'} label={resultado.receiptNumber ? `Recibo ${resultado.receiptNumber}` : 'Sem recibo'} />
+        {resultado.codigoGoverno && <Chip label={`Código ${resultado.codigoGoverno}`} />}
+      </Stack>
+      {transmissao && <EnvioSimuladoCard envio={{ enviado: true, transmissao }} api={api} uid={uid} eid={eid} />}
+      {!transmissao && resultado.returnXml && <TextField className="resizable-preview" multiline rows={8} label="Retorno da Receita" value={resultado.returnXml} InputProps={{ readOnly: true }} />}
+    </Stack>}
+  </Stack></CardContent></Card>;
 }
 
 function rotuloOperacaoEnvio(operacao) {
@@ -403,6 +602,47 @@ function formatarDataEnvio(iso) {
   return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function ambienteDaUrl() {
+  const path = window.location.pathname;
+  if (/^\/dere-stg(?=\/|$)/.test(path)) return { codigo: 'staging', rotulo: 'Staging', rodape: 'Ambiente de staging. Os envios são simulados.' };
+  if (/^\/dere-hml(?=\/|$)/.test(path)) return { codigo: 'homologacao', rotulo: 'Homologação', rodape: 'Ambiente de homologação. Os envios são de pré-produção.' };
+  if (/^\/dere(?=\/|$)/.test(path)) return { codigo: 'producao', rotulo: 'Produção', rodape: null };
+  return { codigo: 'local', rotulo: 'Local', rodape: null };
+}
+
+function rotuloCanal(transmissao) {
+  if (!transmissao || transmissao.simulated) return 'Envio simulado';
+  if (transmissao.environment === 'restricted-production') return 'Envio pré-produção';
+  return 'Envio de produção';
+}
+
+function rotuloAcaoEnvio(aposValidar) {
+  const codigo = ambienteDaUrl().codigo;
+  const base = codigo === 'staging' ? 'Simular envio' : codigo === 'homologacao' ? 'Enviar para pré-produção' : codigo === 'producao' ? 'Enviar para produção' : 'Enviar';
+  return aposValidar ? `${base} após validar` : base;
+}
+
+function BarraAmbiente() {
+  const [ambiente, setAmbiente] = useState(ambienteDaUrl);
+  useEffect(() => {
+    api.get('/api/ambiente').then(response => {
+      const daUrl = ambienteDaUrl();
+      if (daUrl.codigo !== 'local') setAmbiente(daUrl);
+      else if (response.data?.codigo) setAmbiente(response.data);
+    }).catch(() => setAmbiente(ambienteDaUrl()));
+  }, []);
+  useEffect(() => {
+    document.body.classList.toggle('com-barra-ambiente', Boolean(ambiente?.rodape));
+    return () => document.body.classList.remove('com-barra-ambiente');
+  }, [ambiente]);
+  if (!ambiente?.rodape) return null;
+  return <Box className={`barra-ambiente ${ambiente.codigo}`}>{ambiente.rodape}</Box>;
+}
+
+function AcaoDownload({ rotulo, texto, onClick, destaque }) {
+  return <Button variant={destaque ? 'contained' : 'text'} onClick={onClick} sx={{ justifyContent: 'flex-start', textTransform: 'none' }} startIcon={<Box component="svg" viewBox="0 0 24 24" sx={{ width: 18, height: 18 }} aria-hidden="true"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></Box>}>{rotulo}<Typography component="span" variant="body2" color={destaque ? 'inherit' : 'text.secondary'} sx={{ ml: 1 }}>— {texto}</Typography></Button>;
+}
+
 function EnvioSimuladoCard({ envio, api, uid, eid }) {
   const transmissao = envio?.transmissao;
   if (!envio) return null;
@@ -412,9 +652,9 @@ function EnvioSimuladoCard({ envio, api, uid, eid }) {
     baixarBlob(`protocolo-${transmissao.protocol || transmissao.batchId}.pdf`, response.data);
   }
   if (!envio.enviado) {
-    return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Alert severity="warning">{motivoRecusa(envio) || 'Envio simulado recusado.'}</Alert>{transmissao?.protocol ? <Stack spacing={1}><Typography color="text.secondary">Lote já existente para este id. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao.protocol}`} /><Chip color={transmissao.receiptNumber ? 'success' : 'warning'} label={transmissao.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao.status)} /></Stack>{transmissao.batchId && <Tooltip title="Download do PDF com os dados do protocolo em tabela." followCursor><Button onClick={baixarPdf}>PDF do protocolo</Button></Tooltip>}</Stack> : null}</Stack></Paper>;
+    return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Alert severity="warning">{motivoRecusa(envio) || `${rotuloCanal(envio?.transmissao)} recusado.`}</Alert>{transmissao?.protocol ? <Stack spacing={1}><Typography color="text.secondary">Lote já existente para este id. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao.protocol}`} /><Chip color={transmissao.receiptNumber ? 'success' : 'warning'} label={transmissao.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao.status)} /></Stack>{transmissao.batchId && <Tooltip title="Download do PDF com os dados do protocolo em tabela." followCursor><Button onClick={baixarPdf}>PDF do protocolo</Button></Tooltip>}</Stack> : null}</Stack></Paper>;
   }
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Envio simulado</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao?.protocol || '—'}`} /><Chip color={transmissao?.receiptNumber ? 'success' : 'warning'} label={transmissao?.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao?.status)} /></Stack><Typography color="text.secondary">Protocolo é a recepção do lote. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>{transmissao?.eventXml && <Tooltip title="Download do arquivo no formato XML do evento enviado à Receita. Sem a assinatura digital." followCursor><Button onClick={() => baixar(`${transmissao.layout || 'evento'}.xml`, transmissao.eventXml)}>XML do evento</Button></Tooltip>}{transmissao?.batchXml && <Tooltip title="Download do XML do lote enviado à Receita, com o evento assinado." followCursor><Button onClick={() => baixar('lote.xml', transmissao.batchXml)}>XML do lote</Button></Tooltip>}{transmissao?.returnXml && <Tooltip title="Download do XML de retorno da Receita (recepção ou consulta do lote)." followCursor><Button onClick={() => baixar('retorno.xml', transmissao.returnXml)}>XML de retorno</Button></Tooltip>}{transmissao?.csv && <Tooltip title="Download do CSV de origem usado na geração ou conversão do evento." followCursor><Button onClick={() => baixar(`${transmissao.layout || 'evento'}.csv`, transmissao.csv)}>CSV</Button></Tooltip>}{transmissao?.batchId && <Tooltip title="Download do PDF com os dados do protocolo em tabela." followCursor><Button variant="contained" onClick={baixarPdf}>PDF do protocolo</Button></Tooltip>}</Stack></Stack></Paper>;
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">{rotuloCanal(transmissao)}</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao?.protocol || '—'}`} /><Chip color={transmissao?.receiptNumber ? 'success' : 'warning'} label={transmissao?.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao?.status)} /></Stack><Typography color="text.secondary">Protocolo é a recepção do lote. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack spacing={0.5} alignItems="flex-start">{transmissao?.eventXml && <AcaoDownload rotulo="XML do evento" texto="XML do evento enviado à Receita, sem a assinatura digital." onClick={() => baixar(`${transmissao.layout || 'evento'}.xml`, transmissao.eventXml)} />}{transmissao?.batchXml && <AcaoDownload rotulo="XML do lote" texto="XML do lote enviado à Receita, com o evento assinado." onClick={() => baixar('lote.xml', transmissao.batchXml)} />}{transmissao?.returnXml && <AcaoDownload rotulo="XML de retorno" texto="XML de retorno da Receita, da recepção ou da consulta do lote." onClick={() => baixar('retorno.xml', transmissao.returnXml)} />}{transmissao?.csv && <AcaoDownload rotulo="CSV" texto="CSV de origem usado na geração ou conversão do evento." onClick={() => baixar(`${transmissao.layout || 'evento'}.csv`, transmissao.csv)} />}{transmissao?.batchId && <AcaoDownload rotulo="PDF do protocolo" texto="PDF com os dados do protocolo em tabela." onClick={baixarPdf} destaque />}</Stack></Stack></Paper>;
 }
 
 function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, master }) {
@@ -527,9 +767,8 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
 function Dashboard({ onImport }) { return <><Grid container spacing={2} mb={3}><Grid item xs={12} md={4}><Metric title="Layouts ativos" value="4" detail="D-1001, D-1011, D-1101 e D-1199" /></Grid><Grid item xs={12} md={4}><Metric title="Importações" value="Pronto" detail="CSV e XML" /></Grid><Grid item xs={12} md={4}><Metric title="Transmissões" value="Mock local" detail="Integração controlada" /></Grid></Grid><Card><CardContent><Stack spacing={2}><Typography variant="h6">Comece uma operação</Typography><Typography color="text.secondary">Importe um arquivo, valide o modelo canônico e acompanhe as críticas por campo.</Typography><Button variant="contained" onClick={onImport}>Nova importação</Button></Stack></CardContent></Card></>; }
 function Metric({ title, value, detail }) { return <Card><CardContent><Typography color="text.secondary">{title}</Typography><Typography variant="h4" sx={{ mt: 1 }}>{value}</Typography><Typography variant="body2" color="text.secondary">{detail}</Typography></CardContent></Card>; }
 function ResumoResultado({ resultado, aoBaixar, aoRelatorio, rotuloDownload = 'Baixar CSV', criticas = [] }) {
-  const invalido = resultado.valido === false || resultado.quantidadeInvalidos > 0 || criticas.length > 0;
   const linhasComProblema = resultado.linhasComProblema ?? new Set(criticas.map(item => item.linha).filter(Boolean)).size;
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Relatório da validação</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color={invalido ? 'error' : 'success'} label={invalido ? 'Com críticas' : 'Válido'} /><Chip label={`${resultado.totalLinhas ?? resultado.quantidadeArquivos ?? 1} linha(s)`} /><Chip label={`${linhasComProblema} linha(s) com problema`} /><Chip label={`${criticas.length} crítica(s)`} /></Stack><Stack direction="row" spacing={2}>{aoRelatorio && <Button variant="contained" onClick={aoRelatorio}>Baixar relatório Excel</Button>}{aoBaixar && <Button variant="outlined" onClick={aoBaixar}>{rotuloDownload}</Button>}</Stack>{resultado.xml && <TextField className="resizable-preview" multiline rows={5} label="XML gerado" value={resultado.xml} InputProps={{ readOnly: true }} />}{criticas.length > 0 && <Box className="tabela-criticas-wrap"><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{['Linha', 'Coluna', 'Tipo', 'Encontrado', 'Esperado', 'Como corrigir'].map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{criticas.map((item, indice) => <Box component="tr" key={indice}><Box component="td">{item.linha || '—'}</Box><Box component="td">{item.coluna || 'Documento'}</Box><Box component="td"><Chip size="small" color={COR_TIPO[item.tipo] || 'default'} label={item.rotuloTipo || ROTULO_TIPO[item.tipo] || item.tipo} /></Box><Box component="td">{item.valorEncontrado || '—'}</Box><Box component="td">{item.valorEsperado || '—'}</Box><Box component="td">{item.problema}</Box></Box>)}</Box></Box></Box>}</Stack></Paper>;
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Críticas da validação</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="error" label="Com críticas" /><Chip label={`${resultado.totalLinhas ?? resultado.quantidadeArquivos ?? 1} linha(s)`} /><Chip label={`${linhasComProblema} linha(s) com problema`} /><Chip label={`${criticas.length} crítica(s)`} /></Stack>{criticas.length > 0 && aoRelatorio && <Box><Button variant="contained" onClick={aoRelatorio}>Baixar relatório de críticas</Button></Box>}{aoBaixar && <Button variant="outlined" onClick={aoBaixar}>{rotuloDownload}</Button>}<Box className="tabela-criticas-wrap"><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{['Linha', 'Coluna', 'Tipo', 'Encontrado', 'Esperado', 'Como corrigir'].map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{criticas.map((item, indice) => <Box component="tr" key={indice}><Box component="td">{item.linha || '—'}</Box><Box component="td">{item.coluna || 'Documento'}</Box><Box component="td"><Chip size="small" color={COR_TIPO[item.tipo] || 'default'} label={item.rotuloTipo || ROTULO_TIPO[item.tipo] || item.tipo} /></Box><Box component="td">{item.valorEncontrado || '—'}</Box><Box component="td">{item.valorEsperado || '—'}</Box><Box component="td">{item.problema}</Box></Box>)}</Box></Box></Box></Stack></Paper>;
 }
 function UserAdmin({ api, currentUserId, onSelfMaster, setMessage }) {
   const empty = { id: null, login: '', name: '', password: '', master: false };
@@ -562,10 +801,33 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
   useEffect(() => { load().catch(() => setMessage('Falha ao carregar entidades')); }, []);
   function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [] }); }
   function openEdit(entity) { setForm({ id: entity.id, cnpjRoot: entity.cnpjRoot, legalName: entity.legalName, userIds: entity.userIds || [] }); }
-  async function save() { const body = { cnpjRoot: form.cnpjRoot, legalName: form.legalName, userIds: form.userIds }; if (form.id) await api.put(`/api/admin/entities/${form.id}`, body); else await api.post('/api/admin/entities', body); setForm(null); await load(); if (onChanged) await onChanged(); setMessage('Entidade salva'); }
-  async function remove(entity) { await api.delete(`/api/admin/entities/${entity.id}`); await load(); if (onChanged) await onChanged(); setMessage('Entidade excluída'); }
+  async function save() {
+    const cnpjRoot = raizCnpj(form.cnpjRoot);
+    if (!cnpjRoot) { setMessage('Informe o CNPJ raiz com 8 dígitos (ou o CNPJ completo).'); return; }
+    try {
+      const body = { cnpjRoot, legalName: form.legalName, userIds: form.userIds };
+      if (form.id) await api.put(`/api/admin/entities/${form.id}`, body);
+      else await api.post('/api/admin/entities', body);
+      setForm(null);
+      await load();
+      if (onChanged) await onChanged();
+      setMessage('Entidade salva com sucesso.');
+    } catch (error) {
+      setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao salvar a entidade.');
+    }
+  }
+  async function remove(entity) {
+    try {
+      await api.delete(`/api/admin/entities/${entity.id}`);
+      await load();
+      if (onChanged) await onChanged();
+      setMessage('Entidade excluída com sucesso.');
+    } catch (error) {
+      setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao excluir a entidade.');
+    }
+  }
   if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s)</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
-  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
+  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
 }
 function UserPickList({ users, selectedIds, onChange }) {
   const [availableMarked, setAvailableMarked] = useState([]);
@@ -578,4 +840,4 @@ function UserPickList({ users, selectedIds, onChange }) {
 }
 function PickColumn({ title, items, marked, onToggle }) { return <Box><Typography variant="subtitle2" mb={1}>{title}</Typography><Box className="pick-column">{items.map(user => <Button key={user.id} onClick={() => onToggle(user.id)} sx={{ bgcolor: marked.includes(user.id) ? '#2563eb' : 'transparent', color: marked.includes(user.id) ? '#fff' : 'inherit' }}>{user.name} — {user.login}</Button>)}{!items.length && <Typography sx={{ p: 2 }} color="text.secondary">Nenhum usuário</Typography>}</Box></Box>; }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><App /><BarraAmbiente /></React.StrictMode>);
