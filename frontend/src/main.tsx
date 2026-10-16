@@ -603,10 +603,14 @@ function formatarDataEnvio(iso) {
 }
 
 function ambienteDaUrl() {
+  const host = window.location.hostname.toLowerCase();
   const path = window.location.pathname;
-  if (/^\/dere-stg(?=\/|$)/.test(path)) return { codigo: 'staging', rotulo: 'Staging', rodape: 'Ambiente de staging. Os envios são simulados.' };
-  if (/^\/dere-hml(?=\/|$)/.test(path)) return { codigo: 'homologacao', rotulo: 'Homologação', rodape: 'Ambiente de homologação. Os envios são de pré-produção.' };
-  if (/^\/dere(?=\/|$)/.test(path)) return { codigo: 'producao', rotulo: 'Produção', rodape: null };
+  const staging = { codigo: 'staging', rotulo: 'Staging', rodape: 'Ambiente de staging. Os envios são simulados.' };
+  const homologacao = { codigo: 'homologacao', rotulo: 'Homologação', rodape: 'Ambiente de homologação. Os envios são de pré-produção.' };
+  const producao = { codigo: 'producao', rotulo: 'Produção', rodape: null };
+  if (host.startsWith('dere-stg.') || host.startsWith('dere-staging.') || /^\/dere-stg(?=\/|$)/.test(path)) return staging;
+  if (host.startsWith('dere-hml.') || /^\/dere-hml(?=\/|$)/.test(path)) return homologacao;
+  if (host === 'dere.dataa.com.br' || /^\/dere(?=\/|$)/.test(path)) return producao;
   return { codigo: 'local', rotulo: 'Local', rodape: null };
 }
 
@@ -764,7 +768,17 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
   </Stack></CardContent></Card>;
 }
 
-function Dashboard({ onImport }) { return <><Grid container spacing={2} mb={3}><Grid item xs={12} md={4}><Metric title="Layouts ativos" value="4" detail="D-1001, D-1011, D-1101 e D-1199" /></Grid><Grid item xs={12} md={4}><Metric title="Importações" value="Pronto" detail="CSV e XML" /></Grid><Grid item xs={12} md={4}><Metric title="Transmissões" value="Mock local" detail="Integração controlada" /></Grid></Grid><Card><CardContent><Stack spacing={2}><Typography variant="h6">Comece uma operação</Typography><Typography color="text.secondary">Importe um arquivo, valide o modelo canônico e acompanhe as críticas por campo.</Typography><Button variant="contained" onClick={onImport}>Nova importação</Button></Stack></CardContent></Card></>; }
+function Dashboard({ onImport }) {
+  const ambiente = ambienteDaUrl();
+  const transmissao = ambiente.codigo === 'staging'
+    ? ['Simulado', 'Envios simulados']
+    : ambiente.codigo === 'homologacao'
+      ? ['Pré-produção', 'Envios de pré-produção']
+      : ambiente.codigo === 'producao'
+        ? ['Produção', 'Envios de produção']
+        : ['Mock local', 'Integração controlada'];
+  return <><Grid container spacing={2} mb={3}><Grid item xs={12} md={4}><Metric title="Layouts ativos" value="4" detail="D-1001, D-1011, D-1101 e D-1199" /></Grid><Grid item xs={12} md={4}><Metric title="Importações" value="Pronto" detail="CSV e XML" /></Grid><Grid item xs={12} md={4}><Metric title="Transmissões" value={transmissao[0]} detail={transmissao[1]} /></Grid></Grid><Card><CardContent><Stack spacing={2}><Typography variant="h6">Comece uma operação</Typography><Typography color="text.secondary">Importe um arquivo, valide o modelo canônico e acompanhe as críticas por campo.</Typography><Button variant="contained" onClick={onImport}>Nova importação</Button></Stack></CardContent></Card></>;
+}
 function Metric({ title, value, detail }) { return <Card><CardContent><Typography color="text.secondary">{title}</Typography><Typography variant="h4" sx={{ mt: 1 }}>{value}</Typography><Typography variant="body2" color="text.secondary">{detail}</Typography></CardContent></Card>; }
 function ResumoResultado({ resultado, aoBaixar, aoRelatorio, rotuloDownload = 'Baixar CSV', criticas = [] }) {
   const linhasComProblema = resultado.linhasComProblema ?? new Set(criticas.map(item => item.linha).filter(Boolean)).size;

@@ -78,10 +78,18 @@ echo "Publicando JAR..."
 sudo cp "$JAR_SOURCE" "$TARGET"
 sudo chown ubuntu:ubuntu "$TARGET"
 
-if [ -n "${DEPLOYMENT:-}" ] && [ -f "$APP_HOME/dere.env" ]; then
+if [ -n "${DEPLOYMENT:-}" ]; then
     echo "Fixando DERE_DEPLOYMENT=$DEPLOYMENT"
-    sudo sed -i '/^DERE_DEPLOYMENT=/d' "$APP_HOME/dere.env"
-    printf 'DERE_DEPLOYMENT=%s\n' "$DEPLOYMENT" | sudo tee -a "$APP_HOME/dere.env" >/dev/null
+    override_dir="/etc/systemd/system/${SERVICE_NAME}.d"
+    sudo mkdir -p "$override_dir"
+    sudo tee "$override_dir/deployment.conf" >/dev/null <<EOF
+[Service]
+Environment=DERE_DEPLOYMENT=${DEPLOYMENT}
+EOF
+    if [ -f /opt/apps/dere/dere.env ]; then
+        sudo sed -i '/^DERE_DEPLOYMENT=/d' /opt/apps/dere/dere.env
+    fi
+    sudo systemctl daemon-reload
 fi
 
 echo "Reiniciando serviço $SERVICE_NAME..."
