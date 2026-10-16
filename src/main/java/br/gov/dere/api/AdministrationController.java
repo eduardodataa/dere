@@ -76,8 +76,9 @@ public class AdministrationController {
   @Transactional
   public EntityDto entity(@RequestHeader("X-User-Id") Long actorId, @RequestBody EntityRequest request) {
     assertMaster(actorId);
-    requireEntity(request);
-    var entity = entities.save(new DereEntityEntity(request.cnpjRoot().trim(), request.legalName().trim()));
+    var raiz = raizCnpj(request.cnpjRoot());
+    requireEntity(raiz, request.legalName());
+    var entity = entities.save(new DereEntityEntity(raiz, request.legalName().trim()));
     return toDto(entity, link(entity, request.userIds()));
   }
 
@@ -98,9 +99,10 @@ public class AdministrationController {
   @Transactional
   public EntityDto updateEntity(@RequestHeader("X-User-Id") Long actorId, @PathVariable Long id, @RequestBody EntityRequest request) {
     assertMaster(actorId);
-    requireEntity(request);
+    var raiz = raizCnpj(request.cnpjRoot());
+    requireEntity(raiz, request.legalName());
     var entity = entities.findById(id).orElseThrow();
-    entity.update(request.cnpjRoot().trim(), request.legalName().trim());
+    entity.update(raiz, request.legalName().trim());
     entities.save(entity);
     return toDto(entity, link(entity, request.userIds()));
   }
@@ -141,9 +143,15 @@ public class AdministrationController {
     }
   }
 
-  private static void requireEntity(EntityRequest request) {
-    if (request.cnpjRoot() == null || request.cnpjRoot().isBlank() || request.legalName() == null || request.legalName().isBlank()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CNPJ raiz e razão social são obrigatórios");
+  private static String raizCnpj(String valor) {
+    if (valor == null) return "";
+    var digitos = valor.replaceAll("\\D", "");
+    return digitos.length() >= 8 ? digitos.substring(0, 8) : digitos;
+  }
+
+  private static void requireEntity(String raiz, String razao) {
+    if (raiz == null || raiz.length() != 8 || razao == null || razao.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CNPJ raiz deve ter 8 dígitos e a razão social é obrigatória");
     }
   }
 
