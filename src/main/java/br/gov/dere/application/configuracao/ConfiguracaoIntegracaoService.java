@@ -27,6 +27,7 @@ public class ConfiguracaoIntegracaoService {
   private final String defaultClientSecret;
   private final String defaultEnvironment;
   private final String defaultSchema;
+  private final String implantacao;
 
   public ConfiguracaoIntegracaoService(
       DereAppSettingRepository repo,
@@ -37,7 +38,8 @@ public class ConfiguracaoIntegracaoService {
       @Value("${dere.auth.client-id:}") String defaultClientId,
       @Value("${dere.auth.client-secret:}") String defaultClientSecret,
       @Value("${dere.environment:restricted-production}") String defaultEnvironment,
-      @Value("${dere.schema-version:nota_2026_001}") String defaultSchema) {
+      @Value("${dere.schema-version:nota_2026_001}") String defaultSchema,
+      @Value("${dere.deployment:local}") String implantacao) {
     this.repo = repo;
     this.box = new PocSecretBox(key);
     this.defaultMock = defaultMock;
@@ -47,9 +49,14 @@ public class ConfiguracaoIntegracaoService {
     this.defaultClientSecret = defaultClientSecret;
     this.defaultEnvironment = defaultEnvironment;
     this.defaultSchema = defaultSchema;
+    this.implantacao = implantacao;
   }
 
   public ConfiguracaoIntegracao current() {
+    return PoliticaAmbiente.aplicar(implantacao, lida());
+  }
+
+  private ConfiguracaoIntegracao lida() {
     var secret = ler(CLIENT_SECRET, null);
     var secretPlain = secret == null || secret.isBlank() ? defaultClientSecret : decryptOrPlain(secret);
     return new ConfiguracaoIntegracao(

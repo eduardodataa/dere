@@ -8,6 +8,7 @@ spring:
   flyway.enabled: true
   h2.console.enabled: ${DERE_H2_CONSOLE:false}
 dere:
+  deployment: ${DERE_DEPLOYMENT:local}
   mock.enabled: ${DERE_MOCK_ENABLED:true}
   certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY}
   certificate.password-store: ${DERE_CERTIFICATE_PASSWORD_STORE:local}
