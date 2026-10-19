@@ -1,1 +1,37 @@
-body{margin:0;background:#f5f7fb;color:#172033;font-family:Inter,system-ui,sans-serif}.login-shell{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,#eef3ff,#f7f9fc)}.login-bloco{width:min(440px,calc(100vw - 32px))}.selo-login{display:block;width:min(420px,90vw);height:auto}.selo-topo{display:block;width:72px;height:72px;object-fit:contain;flex-shrink:0}.login-card{width:100%;padding:12px}.sidebar .MuiDrawer-paper{width:240px;border:0;background:#111827;color:#e5e7eb}.sidebar .MuiListItemButton{margin:4px 12px;border-radius:8px}.sidebar .Mui-selected{background:#2563eb!important}.brand{padding:28px 24px 20px}.brand .marca{display:block;width:100%;height:auto;margin:0 0 16px;border-radius:6px}.brand .MuiTypography-caption{color:#9ca3af}.content{margin-left:240px;padding:40px;min-height:100vh}.error-list{max-height:260px;overflow:auto;background:#fff8f8;padding:8px;border-radius:8px}.tabela-criticas-wrap{max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px}.tabela-criticas{width:100%;border-collapse:collapse;background:#fff}.tabela-criticas th{text-align:left;padding:8px;background:#111827;color:#fff;position:sticky;top:0;font-size:13px}.tabela-criticas td{padding:8px;border-top:1px solid #e5e7eb;vertical-align:top;font-size:13px}.MuiCard-root{border-radius:14px}.MuiButton-root{border-radius:9px}.pick-list{display:flex;gap:16px;align-items:center}.pick-column{width:280px;height:320px;overflow:auto;border:1px solid #d0d7e2;border-radius:10px;background:#fff}.pick-column button{width:100%;justify-content:flex-start;border-radius:0;text-transform:none}.pick-actions{display:flex;flex-direction:column;gap:8px;min-width:160px}.resizable-preview textarea{overflow:auto!important;resize:vertical;field-sizing:fixed}.barra-ambiente{position:fixed;left:0;right:0;bottom:0;z-index:1400;padding:12px 24px;text-align:center;font-weight:600}.barra-ambiente.staging{background:#9a3412;color:#fff}.barra-ambiente.homologacao{background:#1e3a8a;color:#fff}body.com-barra-ambiente .content,body.com-barra-ambiente .login-shell{padding-bottom:72px}
+body{margin:0;font-family:Inter,system-ui,sans-serif}
+.login-shell{min-height:100vh;min-height:100dvh;display:grid;place-items:center;box-sizing:border-box;padding:24px 16px;position:relative;background:var(--mui-palette-background-default,#F4F6FA);overflow-x:hidden}
+.login-tema{position:absolute;top:12px;right:12px}
+.login-bloco{width:min(420px,100%);margin:0}
+.selo-login{display:block;width:301px;height:328px;object-fit:cover;border-radius:50%}
+.selo-topo{display:block;width:72px;height:72px;object-fit:contain;flex-shrink:0}
+.login-card{width:100%;padding:8px}
+.sidebar .MuiDrawer-paper{width:240px;border:0;background:#111827;color:#e5e7eb}
+[data-mui-color-scheme="dark"] .sidebar .MuiDrawer-paper{background:#0B1220}
+.sidebar .MuiListItemButton-root{margin:4px 12px;border-radius:8px}
+.sidebar .MuiListItemButton-root:hover{background:rgba(255,255,255,.08)}
+.sidebar .Mui-selected,.sidebar .Mui-selected:hover{background-color:#2563eb !important;color:#fff !important}
+[data-mui-color-scheme="dark"] .sidebar .Mui-selected,[data-mui-color-scheme="dark"] .sidebar .Mui-selected:hover{background-color:#60A5FA !important;color:#0F172A !important}
+.brand{padding:28px 24px 20px}
+.brand .marca{display:block;width:100%;height:auto;margin:0 0 16px;border-radius:6px}
+.brand .MuiTypography-caption{color:#9ca3af}
+.content{margin-left:240px;padding:40px;min-height:100vh}
+.error-list{max-height:260px;overflow:auto;background:color-mix(in srgb,var(--mui-palette-error-main,#D32F2F) 12%,transparent);padding:8px;border-radius:8px}
+.tabela-criticas-wrap{max-height:360px;overflow:auto;border:1px solid var(--mui-palette-divider,#E2E8F0);border-radius:8px}
+.tabela-criticas{width:100%;border-collapse:collapse;background:var(--mui-palette-background-paper,#fff);color:var(--mui-palette-text-primary,#111827)}
+.tabela-criticas th{text-align:left;padding:8px;background:#111827;color:#fff;position:sticky;top:0;font-size:13px}
+[data-mui-color-scheme="dark"] .tabela-criticas th{background:#263449;color:#F8FAFC}
+.tabela-criticas td{padding:8px;border-top:1px solid var(--mui-palette-divider,#E2E8F0);vertical-align:top;font-size:13px}
+.tabela-criticas tbody tr:hover td{background:var(--mui-palette-action-hover,rgba(17,24,39,.04))}
+.pick-list{display:flex;gap:16px;align-items:center}
+.pick-column{width:280px;height:320px;overflow:auto;border:1px solid var(--mui-palette-divider,#E2E8F0);border-radius:10px;background:var(--mui-palette-background-paper,#fff)}
+.pick-column button{width:100%;justify-content:flex-start;border-radius:0}
+.pick-actions{display:flex;flex-direction:column;gap:8px;min-width:160px}
+.resizable-preview textarea{overflow:auto;resize:vertical;field-sizing:fixed}
+.barra-ambiente{position:fixed;left:0;right:0;bottom:0;z-index:1400;padding:12px 24px;text-align:center;font-weight:600}
+.barra-ambiente.staging{background:#9a3412;color:#fff}
+.barra-ambiente.homologacao{background:#1e3a8a;color:#fff}
+body.com-barra-ambiente .content,body.com-barra-ambiente .login-shell{padding-bottom:72px}
+.menu-secao{display:block;padding:16px 24px 4px;color:#9ca3af;letter-spacing:.06em;font-size:11px;text-transform:uppercase}
+.zona-arquivo{display:flex;flex-direction:column;align-items:center;gap:8px;border:1px dashed var(--mui-palette-divider,#94a3b8);border-radius:12px;padding:28px 16px;text-align:center;background:var(--mui-palette-background-paper,#f8fafc);color:inherit;cursor:pointer}
+.zona-arquivo:hover{border-color:var(--mui-palette-primary-main,#1976D2);background:color-mix(in srgb,var(--mui-palette-primary-main,#1976D2) 8%,var(--mui-palette-background-paper,#fff))}
+.sidebar .MuiListItemIcon-root{color:inherit;min-width:36px}

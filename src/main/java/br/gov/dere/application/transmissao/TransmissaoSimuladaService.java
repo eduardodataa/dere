@@ -157,11 +157,11 @@ public class TransmissaoSimuladaService {
       if ("D-1001".equals(leiaute)) importD1001.persistValidatedXml(userId, entityId, arquivo, xml);
       return new ResultadoEnvioSimulado(true, relatorio, visao(batch, evento));
     } catch (ExcecaoTransmissaoGoverno ex) {
-      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, textoEnvio(ex), ex);
+      throw falhaGoverno(ex, identificador);
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
-      throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensagemEnvio(ex), ex);
+      throw falhaLocal(ex, identificador);
     }
   }
 
@@ -209,11 +209,11 @@ public class TransmissaoSimuladaService {
       }
       return new ConsultaProtocolo(numero, status.name(), recibo, consulta.codigoGoverno(), retorno, local, null);
     } catch (ExcecaoTransmissaoGoverno ex) {
-      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, textoConsulta(numero, ex), ex);
+      throw falhaConsulta(numero, ex);
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
-      throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensagem(ex), ex);
+      throw falhaLocal(ex, null);
     }
   }
 
@@ -268,7 +268,7 @@ public class TransmissaoSimuladaService {
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
-      throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensagem(ex), ex);
+      throw falhaLocal(ex, evento.getEventIdentifier());
     }
   }
 
@@ -440,26 +440,22 @@ public class TransmissaoSimuladaService {
     return protocolo.matches("1\\.\\d{14}\\.\\d{6}");
   }
 
-  private static String textoEnvio(ExcecaoTransmissaoGoverno ex) {
-    var corpo = ex.responseBody() == null ? "" : ex.responseBody().replaceAll("\\s+", " ").trim();
-    if (corpo.length() > 400) corpo = corpo.substring(0, 400);
-    if (ex.statusCode() == 401) return "A Receita recusou a autenticação. Verifique o certificado e as credenciais da Integra Receita.";
-    if (ex.statusCode() == 403) return "A Receita recusou o envio por falta de permissão neste ambiente.";
-    if (ex.statusCode() == 404) return "A Receita não aceitou o envio (recurso não encontrado).";
-    if (ex.retryable() || ex.statusCode() == 408) {
-      if (corpo.isBlank()) return "Falha de comunicação com a Receita Federal (HTTP " + ex.statusCode() + "). Tente novamente.";
-      return "Falha de comunicação com a Receita Federal (HTTP " + ex.statusCode() + "): " + corpo;
-    }
-    if (corpo.isBlank()) return "A Receita recusou o envio (HTTP " + ex.statusCode() + ").";
-    return "A Receita recusou o envio (HTTP " + ex.statusCode() + "): " + corpo;
+  private static FalhaTransmissaoException falhaGoverno(ExcecaoTransmissaoGoverno ex, String identificador) {
+    var diagnostico = ApresentacaoErroTransmissao.deGoverno(ex, identificador);
+    ApresentacaoErroTransmissao.registrar(diagnostico, ex.responseBody());
+    return new FalhaTransmissaoException(diagnostico, ex);
   }
 
-  private static String textoConsulta(String protocolo, ExcecaoTransmissaoGoverno ex) {
-    if (ex.statusCode() == 404) return "A Receita não encontrou o protocolo " + protocolo + ".";
-    var corpo = ex.responseBody() == null ? "" : ex.responseBody().replaceAll("\\s+", " ").trim();
-    if (corpo.length() > 400) corpo = corpo.substring(0, 400);
-    if (corpo.isBlank()) return "A Receita recusou a consulta do protocolo " + protocolo + " (HTTP " + ex.statusCode() + ").";
-    return "A Receita recusou a consulta do protocolo " + protocolo + " (HTTP " + ex.statusCode() + "): " + corpo;
+  private static FalhaTransmissaoException falhaConsulta(String protocolo, ExcecaoTransmissaoGoverno ex) {
+    var diagnostico = ApresentacaoErroTransmissao.deConsulta(protocolo, ex);
+    ApresentacaoErroTransmissao.registrar(diagnostico, ex.responseBody());
+    return new FalhaTransmissaoException(diagnostico, ex);
+  }
+
+  private static FalhaTransmissaoException falhaLocal(Exception ex, String identificador) {
+    var diagnostico = ApresentacaoErroTransmissao.deFalhaLocal(ex, identificador);
+    ApresentacaoErroTransmissao.registrar(diagnostico, null);
+    return new FalhaTransmissaoException(diagnostico, ex);
   }
 
   private static String novoProtocolo() {
@@ -473,42 +469,6 @@ public class TransmissaoSimuladaService {
   private static String hash(String xml) throws Exception {
     var digest = MessageDigest.getInstance("SHA-256").digest((xml == null ? "" : xml).getBytes(StandardCharsets.UTF_8));
     return Base64.getEncoder().encodeToString(digest);
-  }
-
-  private static String mensagem(Exception ex) {
-    for (Throwable atual = ex; atual != null; atual = atual.getCause()) {
-      var texto = atual.getMessage() == null ? "" : atual.getMessage();
-      if (texto.contains("Socket error") || texto.contains("max_allowed_packet") || texto.contains("Packet for query is too large")
-          || texto.contains("Connection is closed")) {
-        return "O XML do D-1011 é maior que o max_allowed_packet do MariaDB (1 MB). Execute: SET GLOBAL max_allowed_packet=67108864;";
-      }
-      if (texto.contains("Duplicate entry") || texto.contains("uk_transmission_attempt") || texto.contains("ConstraintViolation")) {
-        return "A consulta do protocolo foi feita na Receita, mas não foi possível gravar a tentativa. Consulte de novo para atualizar o retorno.";
-      }
-    }
-    var texto = ex.getMessage() == null ? "" : ex.getMessage();
-    if (texto.isBlank() || texto.contains("could not execute statement") || texto.contains("SQL") || texto.contains("Constraint")) {
-      return "Falha ao processar a consulta do protocolo.";
-    }
-    return texto;
-  }
-
-  private static String mensagemEnvio(Exception ex) {
-    for (Throwable atual = ex; atual != null; atual = atual.getCause()) {
-      var texto = atual.getMessage() == null ? "" : atual.getMessage();
-      if (texto.contains("Socket error") || texto.contains("max_allowed_packet") || texto.contains("Packet for query is too large")
-          || texto.contains("Connection is closed")) {
-        return "O XML é maior que o max_allowed_packet do MariaDB (1 MB). Execute: SET GLOBAL max_allowed_packet=67108864;";
-      }
-      if (texto.contains("Duplicate entry") || texto.contains("uk_transmission_attempt") || texto.contains("ConstraintViolation")) {
-        return "O envio foi processado, mas não foi possível gravar a tentativa. Tente novamente.";
-      }
-    }
-    var texto = ex.getMessage() == null ? "" : ex.getMessage();
-    if (texto.isBlank() || texto.contains("could not execute statement") || texto.contains("SQL") || texto.contains("Constraint")) {
-      return "Falha ao processar o envio à Receita Federal.";
-    }
-    return texto;
   }
 
   private record SigningKey(java.security.KeyStore keyStore, char[] password, String alias) {}

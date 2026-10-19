@@ -19,7 +19,7 @@ class PoliticaStatusTransmissaoTest {
     assertEquals(EstadoTransmissao.PROCESSING, PoliticaStatusTransmissao.deCodigoGoverno("1"));
   }
   @Test void identifiesTransientResponses() {
-    assertTrue(PoliticaStatusTransmissao.retryable(408));
+    assertEquals(false, PoliticaStatusTransmissao.retryable(408));
     assertTrue(PoliticaStatusTransmissao.retryable(429));
     assertTrue(PoliticaStatusTransmissao.retryable(503));
     assertEquals(false, PoliticaStatusTransmissao.retryable(400));

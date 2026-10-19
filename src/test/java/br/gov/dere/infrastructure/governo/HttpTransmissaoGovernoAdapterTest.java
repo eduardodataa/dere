@@ -12,6 +12,7 @@ import br.gov.dere.domain.transmissao.EstadoTransmissao;
 import br.gov.dere.integration.receita.ClienteTransmissaoDere;
 import br.gov.dere.integration.receita.RespostaHttpGoverno;
 import br.gov.dere.integration.receita.ExcecaoTransmissaoGoverno;
+import org.springframework.web.client.ResourceAccessException;
 import org.junit.jupiter.api.Test;
 
 class HttpTransmissaoGovernoAdapterTest {
@@ -52,6 +53,15 @@ class HttpTransmissaoGovernoAdapterTest {
     var result = adapter.submit("<lote/>", "k1");
     assertEquals("P-2", result.protocol());
     verify(client, org.mockito.Mockito.times(2)).transmit(any(), any());
+  }
+
+  @Test
+  void submitNaoRepeteTimeout() {
+    when(client.transmit(any(), any())).thenThrow(new ResourceAccessException("Read timed out"));
+    var ex = assertThrows(ExcecaoTransmissaoGoverno.class, () -> adapter.submit("<lote/>", "k1"));
+    assertEquals(408, ex.statusCode());
+    assertEquals(false, ex.retryable());
+    verify(client, org.mockito.Mockito.times(1)).transmit(any(), any());
   }
 
   @Test

@@ -89,9 +89,8 @@ public class HttpTransmissaoGovernoAdapter implements TransmissaoGovernoPort {
         if (!ex.retryable() || tentativa == maxAttempts) throw ex;
         sleep(tentativa);
       } catch (ResourceAccessException ex) {
-        last = new ExcecaoTransmissaoGoverno(408, true, operacao + " timeout/indisponível: " + ex.getMessage());
-        if (tentativa == maxAttempts) throw last;
-        sleep(tentativa);
+        last = new ExcecaoTransmissaoGoverno(408, false, operacao + " timeout/indisponível: " + ex.getMessage());
+        throw last;
       }
     }
     throw last == null ? new ExcecaoTransmissaoGoverno(500, true, operacao + " sem resposta") : last;

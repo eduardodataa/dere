@@ -1,1 +1,22 @@
-<div id="root"></div><script type="module" src="/src/main.tsx"></script>
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="icon" href="/favicon-data-a.png" type="image/png" />
+    <title>DeRE</title>
+    <script>
+      try {
+        var modo = localStorage.getItem('dere-theme-mode');
+        if (modo !== 'light' && modo !== 'dark') modo = 'light';
+        document.documentElement.setAttribute('data-mui-color-scheme', modo);
+        document.documentElement.style.colorScheme = modo;
+      } catch (erro) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,5 +1,7 @@
 package br.gov.dere.api;
 
+import br.gov.dere.application.transmissao.ApresentacaoErroTransmissao;
+import br.gov.dere.application.transmissao.FalhaTransmissaoException;
 import br.gov.dere.application.transmissao.ProtocoloPdf;
 import br.gov.dere.application.transmissao.RequisicaoConsultaProtocolo;
 import br.gov.dere.application.transmissao.RequisicaoEnvioSimulado;
@@ -42,11 +44,15 @@ public class TransmissaoController {
       @RequestHeader("X-Entity-Id") Long entityId) {
     try {
       return ResponseEntity.ok(simulated.simulate(userId, entityId, request));
+    } catch (FalhaTransmissaoException ex) {
+      return ResponseEntity.status(ex.getStatusCode()).body(ex.diagnostico().corpo());
     } catch (ResponseStatusException ex) {
       var texto = ex.getReason() == null || ex.getReason().isBlank() ? "Falha no envio à Receita Federal." : ex.getReason();
       return ResponseEntity.status(ex.getStatusCode()).body(Map.of("message", texto));
     } catch (Exception ex) {
-      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("message", "Falha de comunicação com a Receita Federal."));
+      var diagnostico = ApresentacaoErroTransmissao.deFalhaLocal(ex, null);
+      ApresentacaoErroTransmissao.registrar(diagnostico, null);
+      return ResponseEntity.status(diagnostico.httpAplicacao()).body(diagnostico.corpo());
     }
   }
 
@@ -57,11 +63,15 @@ public class TransmissaoController {
       @RequestHeader("X-Entity-Id") Long entityId) {
     try {
       return ResponseEntity.ok(simulated.consultarProtocolo(userId, entityId, request == null ? null : request.protocolo()));
+    } catch (FalhaTransmissaoException ex) {
+      return ResponseEntity.status(ex.getStatusCode()).body(ex.diagnostico().corpo());
     } catch (ResponseStatusException ex) {
       var texto = ex.getReason() == null || ex.getReason().isBlank() ? "Falha na consulta do protocolo." : ex.getReason();
       return ResponseEntity.status(ex.getStatusCode()).body(Map.of("message", texto));
     } catch (Exception ex) {
-      return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of("message", "Falha ao consultar o protocolo na Receita."));
+      var diagnostico = ApresentacaoErroTransmissao.deFalhaLocal(ex, null);
+      ApresentacaoErroTransmissao.registrar(diagnostico, null);
+      return ResponseEntity.status(diagnostico.httpAplicacao()).body(diagnostico.corpo());
     }
   }
 
