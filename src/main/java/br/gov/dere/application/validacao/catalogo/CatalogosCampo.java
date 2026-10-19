@@ -75,9 +75,14 @@ public final class CatalogosCampo {
       "0", "PEPS automático",
       "1", "Informação manual");
 
+  public static final String PADRAO_ID_EVENTO =
+      "DeRE[0-9]{4}1[0-9]{14}(19|20)[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9][0-9]{5}";
+  public static final String DICA_ID_EVENTO =
+      "42 caracteres: DeRE + código do evento (4) + tipo de inscrição 1 + CNPJ com 14 dígitos + AAAAMMDD + HHMMSS + sequencial de 5 dígitos";
+
   public static List<RegraCampo> d1001() {
     return List.of(
-        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtInfoContrib/@id", true),
+        RegraCampo.texto("id", true, PADRAO_ID_EVENTO, DICA_ID_EVENTO, 42, "/DeRE/evtInfoContrib/@id", true),
         RegraCampo.dominio("motExcl", false, MOT_EXCL, "/DeRE/evtInfoContrib/ideEvento/motExcl", true),
         RegraCampo.texto("nrProc", false, null, "até 21 caracteres", 21, "/DeRE/evtInfoContrib/ideEvento/nrProc", true),
         RegraCampo.dominio("tpOper", true, TP_OPER, "/DeRE/evtInfoContrib/ideEvento/tpOper", true),
@@ -100,7 +105,7 @@ public final class CatalogosCampo {
 
   public static List<RegraCampo> d1011() {
     return List.of(
-        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtPGCC/@id", true),
+        RegraCampo.texto("id", true, PADRAO_ID_EVENTO, DICA_ID_EVENTO, 42, "/DeRE/evtPGCC/@id", true),
         RegraCampo.dominio("motExcl", false, MOT_EXCL, "/DeRE/evtPGCC/ideEvento/motExcl", true),
         RegraCampo.texto("nrProc", false, null, "até 21 caracteres", 21, "/DeRE/evtPGCC/ideEvento/nrProc", true),
         RegraCampo.dominio("tpOper", true, TP_OPER, "/DeRE/evtPGCC/ideEvento/tpOper", true),
@@ -132,7 +137,7 @@ public final class CatalogosCampo {
 
   public static List<RegraCampo> d1101() {
     return List.of(
-        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtBalancete/@id", true),
+        RegraCampo.texto("id", true, PADRAO_ID_EVENTO, DICA_ID_EVENTO, 42, "/DeRE/evtBalancete/@id", true),
         RegraCampo.dominio("motExcl", false, MOT_EXCL, "/DeRE/evtBalancete/ideEvento/motExcl", true),
         RegraCampo.texto("nrProc", false, null, "até 21 caracteres", 21, "/DeRE/evtBalancete/ideEvento/nrProc", true),
         RegraCampo.texto("nrRecibo", false, "[0-9]{4}-20[0-9]{2}(0[1-9]|1[0-2])-[0-9A-Z]{19}", "31 caracteres no formato NNNN-AAAAMM-XXXXXXXXXXXXXXXXXXX", 31, "/DeRE/evtBalancete/ideEvento/nrRecibo", true),
@@ -157,7 +162,7 @@ public final class CatalogosCampo {
 
   public static List<RegraCampo> d1199() {
     return List.of(
-        RegraCampo.texto("id", true, "[0-9A-Za-z]{42}", "exatamente 42 caracteres alfanuméricos", 42, "/DeRE/evtFechMensal/@id", true),
+        RegraCampo.texto("id", true, PADRAO_ID_EVENTO, DICA_ID_EVENTO, 42, "/DeRE/evtFechMensal/@id", true),
         RegraCampo.dominio("tpOper", true, TP_OPER_1199, "/DeRE/evtFechMensal/ideEvento/tpOper", true),
         RegraCampo.dominio("tpAmb", true, TP_AMB, "/DeRE/evtFechMensal/ideEvento/tpAmb", true),
         RegraCampo.dominio("aplicEmi", true, APLIC_EMI, "/DeRE/evtFechMensal/ideEvento/aplicEmi", true),

@@ -50,6 +50,29 @@ class ValidadorCamposCsvTest {
   }
 
   @Test
+  void rejeitaIdentificadorRejeitadoPelaReceita() {
+    var csv = """
+        id;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;regTribPrinc;indNatTrib
+        DeRE10010191490420281015190000000000000011;1;2;1;dere-poc/0.1;01914904;15/10/2028;9;0
+        """;
+    var criticas = ValidadorCamposCsv.validar("D-1001", "ms1050.csv", csv);
+    var id = criticas.stream().filter(item -> "id".equals(item.coluna())).findFirst().orElseThrow();
+    assertEquals(TipoCritica.FORA_DO_PADRAO, id.tipo());
+    assertTrue(id.valorEsperado().contains("CNPJ com 14 dígitos"));
+    assertTrue(id.problema().contains("CNPJ com 14 dígitos"));
+  }
+
+  @Test
+  void aceitaIdentificadorNaComposicaoDaReceita() {
+    var csv = """
+        id;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;regTribPrinc;indNatTrib
+        DeRE10011000000019149042028101519000000011;1;2;1;dere-poc/0.1;01914904;15/10/2028;9;0
+        """;
+    var criticas = ValidadorCamposCsv.validar("D-1001", "id-ok.csv", csv);
+    assertTrue(criticas.stream().noneMatch(item -> "id".equals(item.coluna())), () -> criticas.toString());
+  }
+
+  @Test
   void apontaIdForaDoPadrao() {
     var csv = """
         id;tpOper;tpAmb;aplicEmi;verAplic;nrInsc;iniValid;regTribPrinc;indNatTrib
