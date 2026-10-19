@@ -9,6 +9,26 @@ import org.junit.jupiter.api.Test;
 
 class InterpretadorRetornoReceitaTest {
   @Test
+  void leOcorrenciasNoFormatoDaReceita() {
+    var xml = """
+        <retornoLoteEventos>
+          <cdResposta>3</cdResposta>
+          <descResposta>Lote processado com sucesso - Possui um ou mais eventos com ocorrências de erro.</descResposta>
+          <ocorrencias>
+            <codigo>MS1050</codigo>
+            <descricao>O campo ID do evento não está no formato esperado.</descricao>
+            <tipo>1</tipo>
+          </ocorrencias>
+        </retornoLoteEventos>
+        """;
+    var retorno = InterpretadorRetornoReceita.ler(xml);
+    assertEquals("3", retorno.codigo());
+    assertEquals(1, retorno.ocorrencias().size());
+    assertEquals("MS1050", retorno.ocorrencias().get(0).codigo());
+    assertEquals("Lote processado com sucesso - Possui um ou mais eventos com ocorrências de erro.", retorno.descricao());
+  }
+
+  @Test
   void leMs0015() {
     var xml = """
         <retornoLote versao="1.0.0">

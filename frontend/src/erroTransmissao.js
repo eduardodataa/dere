@@ -44,6 +44,80 @@ export function interpretarErroTransmissao(error) {
   });
 }
 
+export function diagnosticoRetornoReceita(xml) {
+  const retorno = lerRetornoReceita(xml);
+  const principal = retorno.ocorrencias[0];
+  if (!principal) return null;
+  const codigo = principal.codigo || '';
+  const conhecido = mensagensReceita[codigo];
+  return {
+    categoria: 'REJEICAO_RECEITA',
+    titulo: conhecido?.titulo || 'A Receita Federal rejeitou a declaração',
+    mensagem: conhecido?.mensagem || principal.descricao || 'A Receita Federal recusou o evento.',
+    orientacao: conhecido?.orientacao || 'Corrija o arquivo conforme a descrição da Receita e envie novamente. O protocolo confirma apenas a recepção do lote.',
+    codigo,
+    descricaoOriginal: principal.descricao || retorno.descResposta,
+    protocolo: retorno.protocolo,
+    status: retorno.cdResposta,
+    ocorrencias: retorno.ocorrencias,
+    repetir: false,
+    inconclusivo: false
+  };
+}
+
+export function lerRetornoReceita(xml) {
+  const texto = String(xml || '');
+  const blocos = [...blocosTag(texto, 'ocorrencia'), ...blocosTag(texto, 'ocorrencias')];
+  const ocorrencias = blocos.map(bloco => ({
+    codigo: tagInterna(bloco, 'codigo'),
+    descricao: tagInterna(bloco, 'descricao'),
+    tipo: tagInterna(bloco, 'tipo'),
+    localizacao: tagInterna(bloco, 'localizacao')
+  })).filter(item => item.codigo || item.descricao);
+  return {
+    cdResposta: tagInterna(texto, 'cdResposta'),
+    descResposta: tagInterna(texto, 'descResposta'),
+    protocolo: tagInterna(texto, 'protocolo'),
+    ocorrencias
+  };
+}
+
+const mensagensReceita = {
+  MS0015: {
+    titulo: 'Não foi possível transmitir a declaração',
+    mensagem: 'A Receita Federal não recebeu o lote.',
+    orientacao: 'O arquivo passou pela validação local, mas o envio foi recusado. Consulte os detalhes do retorno antes de tentar novamente.'
+  },
+  MS1050: {
+    titulo: 'A Receita Federal rejeitou a declaração',
+    mensagem: 'O identificador do evento não está no formato exigido.',
+    orientacao: 'O identificador precisa ter 42 caracteres: DeRE, o código do evento, o tipo de inscrição, o CNPJ com 14 dígitos, a data, a hora e um sequencial. Corrija o arquivo e envie novamente.'
+  }
+};
+
+function blocosTag(xml, nome) {
+  const encontrados = [];
+  const expressao = new RegExp(`<(?:[\\w.-]+:)?${nome}\\b[^>]*>([\\s\\S]*?)</(?:[\\w.-]+:)?${nome}>`, 'gi');
+  let achado = expressao.exec(xml);
+  while (achado) {
+    encontrados.push(achado[1]);
+    achado = expressao.exec(xml);
+  }
+  return encontrados;
+}
+
+function tagInterna(xml, nome) {
+  const achado = new RegExp(`<(?:[\\w.-]+:)?${nome}\\b[^>]*>([\\s\\S]*?)</(?:[\\w.-]+:)?${nome}>`, 'i').exec(xml);
+  if (!achado) return '';
+  return achado[1]
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
 export function apresentarErroTransmissao(erro) {
   const atual = normalizar(erro);
   const detalhes = [

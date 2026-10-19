@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { apresentarErroTransmissao, bloqueiaEnvioSimultaneo, deveRetentarAutomatico, interpretarErroTransmissao, tokensAlertaTransmissao } from './erroTransmissao.js';
+import { apresentarErroTransmissao, bloqueiaEnvioSimultaneo, deveRetentarAutomatico, diagnosticoRetornoReceita, interpretarErroTransmissao, tokensAlertaTransmissao } from './erroTransmissao.js';
+
+test('retorno com MS1050 explica o identificador', () => {
+  const xml = `<retornoLoteEventos><cdResposta>3</cdResposta><descResposta>Lote processado com sucesso - Possui um ou mais eventos com ocorrências de erro.</descResposta><protocolo>2.202610.0000000000000016071</protocolo><ocorrencias><codigo>MS1050</codigo><descricao>O campo ID do evento não está no formato esperado.</descricao><tipo>1</tipo></ocorrencias></retornoLoteEventos>`;
+  const diag = diagnosticoRetornoReceita(xml);
+  assert.equal(diag.codigo, 'MS1050');
+  assert.equal(diag.mensagem, 'O identificador do evento não está no formato exigido.');
+  assert.equal(diag.mensagem.includes('sucesso'), false);
+  assert.equal(apresentarErroTransmissao(diag).detalhes.some(item => item.valor.includes('formato esperado')), true);
+});
 
 test('MS0015 mostra texto contábil e código', () => {
   const view = apresentarErroTransmissao({

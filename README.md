@@ -260,6 +260,16 @@ Para EFPC/PREVIC, o pacote da Nota Orientativa 2026.001 é o preferencial enquan
 
 O fluxo local usa certificado autoassinado efêmero apenas para demonstração. Ele não deve ser usado na Receita.
 
+O arquivo de teste fica em `examples/certificados/dere-poc-teste.p12`.
+
+```text
+Senha: changeit
+Alias: dere-test
+Titular: CN=DeRE POC Test
+```
+
+Esse arquivo serve para cadastrar o certificado na tela e demonstrar a assinatura local. A homologação e a produção enviam à Receita e exigem o e-CNPJ da entidade.
+
 Para homologação oficial/produção, ainda é necessário implementar o provider de certificado ICP-Brasil:
 
 - A1 PKCS#12 protegido por cofre de segredos, ou A3/HSM;

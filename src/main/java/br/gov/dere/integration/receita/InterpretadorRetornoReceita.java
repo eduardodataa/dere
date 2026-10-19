@@ -45,12 +45,13 @@ public final class InterpretadorRetornoReceita {
 
   private static List<OcorrenciaRetorno> ocorrencias(Element raiz) {
     var lista = new ArrayList<OcorrenciaRetorno>();
-    for (Element item : elementos(raiz, "ocorrencia")) {
-      lista.add(new OcorrenciaRetorno(
-          textoFilho(item, "codigo"),
-          textoFilho(item, "descricao"),
-          textoFilho(item, "tipo"),
-          textoFilho(item, "localizacao")));
+    for (String nome : List.of("ocorrencia", "ocorrencias")) {
+      for (Element item : elementos(raiz, nome)) {
+        var codigo = textoFilho(item, "codigo");
+        var descricao = textoFilho(item, "descricao");
+        if (codigo == null && descricao == null) continue;
+        lista.add(new OcorrenciaRetorno(codigo, descricao, textoFilho(item, "tipo"), textoFilho(item, "localizacao")));
+      }
     }
     return List.copyOf(lista);
   }
@@ -101,7 +102,7 @@ public final class InterpretadorRetornoReceita {
   private static boolean dentroDeOcorrencia(Element item) {
     Node atual = item.getParentNode();
     while (atual != null) {
-      if (atual instanceof Element elemento && "ocorrencia".equals(local(elemento))) return true;
+      if (atual instanceof Element elemento && ("ocorrencia".equals(local(elemento)) || "ocorrencias".equals(local(elemento)))) return true;
       atual = atual.getParentNode();
     }
     return false;
