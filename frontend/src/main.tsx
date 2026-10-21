@@ -379,7 +379,7 @@ function App() {
         <Stack direction="row" spacing={1.5} alignItems="center"><Chip label={currentEntity?.legalName || 'Entidade não selecionada'} /><BotaoTema /><Button variant="outlined" onClick={signOut}>Sair</Button><img className="selo-topo" src={seloDere} alt="DeRE" /></Stack>
       </Stack>
       {message && <Alert sx={{ mb: 3 }} severity={gravidadeAviso(message)}>{message}</Alert>}
-      {page === PAGINA_VISAO ? <Dashboard api={api} uid={uid} eid={eid} entidade={currentEntity} certificados={certificados} onNova={() => { setPage(PAGINA_ENVIO); setMessage(''); }} onPendencias={() => abrirHistorico('', 'PENDENCIAS')} /> : null}
+      {page === PAGINA_VISAO ? <Dashboard api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} master={master} certificados={certificados} onNova={() => { setPage(PAGINA_ENVIO); setMessage(''); }} onPendencias={() => abrirHistorico('', 'PENDENCIAS')} /> : null}
       <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} /></Box>
       {page === PAGINA_HISTORICO ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} entidadeNome={currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : ''} filtroInicial={filtroHistorico} /> : null}
       {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={load} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
@@ -987,7 +987,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
   </Stack></CardContent></Card>;
 }
 
-function Dashboard({ api, uid, eid, entidade, certificados, onNova, onPendencias }) {
+function Dashboard({ api, uid, eid, entities, setEid, master, certificados, onNova, onPendencias }) {
   const [linhas, setLinhas] = useState([]);
   const [periodo, setPeriodo] = useState('mes');
   const [erro, setErro] = useState('');
@@ -1007,9 +1007,10 @@ function Dashboard({ api, uid, eid, entidade, certificados, onNova, onPendencias
   return <Stack spacing={2}>
     <Card><CardContent><Stack spacing={2}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Box><Typography variant="h6">Visão geral</Typography><Typography color="text.secondary">{entidade ? `${entidade.legalName} — ${entidade.cnpjRoot}` : 'Entidade não selecionada'}</Typography></Box>
+        <Typography variant="h6">Visão geral</Typography>
         <TextField select label="Período" value={periodo} onChange={event => setPeriodo(event.target.value)} sx={{ minWidth: 160 }}><MenuItem value="mes">Este mês</MenuItem><MenuItem value="ano">Este ano</MenuItem><MenuItem value="tudo">Tudo</MenuItem></TextField>
       </Stack>
+      <TextField select fullWidth label="Entidade" value={eid} disabled={!master && entities.length <= 1} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField>
       {erro && <Alert severity="error">{erro}</Alert>}
       <Grid container spacing={2}>
         <Grid item xs={12} sm={6}><Metric title="Declarações enviadas" value={String(enviadas)} detail="No período selecionado" /></Grid>
