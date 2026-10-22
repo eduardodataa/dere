@@ -1,17 +1,31 @@
 package br.gov.dere.application.transmissao;
 
-import br.gov.dere.application.mock.LocalDereFlowService;
 import br.gov.dere.domain.EventStatus;
 import br.gov.dere.persistence.DereBatchRepository;
 import java.time.Instant;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TransmissaoPollingService {
-  private final DereBatchRepository batches; private final LocalDereFlowService localFlow;
-  public TransmissaoPollingService(DereBatchRepository batches, LocalDereFlowService localFlow) { this.batches = batches; this.localFlow = localFlow; }
-  @Scheduled(fixedDelayString = "${dere.transmission.poll-delay-ms:30000}") @Transactional
-  public void pollDueBatches() { var now = Instant.now(); for (var batch : batches.findTop100ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(EventStatus.PROCESSING, now)) { if (!batch.claimQuery(now, 60)) continue; batches.saveAndFlush(batch); try { localFlow.query(batch.getId()); } catch (RuntimeException ex) { batch.queryFailed(Math.min(900, 30L * Math.max(1, batch.getQueryAttempts()))); batches.save(batch); } } }
+  private final DereBatchRepository batches;
+  private final ConsultaLoteAgendada consulta;
+
+  public TransmissaoPollingService(DereBatchRepository batches, ConsultaLoteAgendada consulta) {
+    this.batches = batches;
+    this.consulta = consulta;
+  }
+
+  @Scheduled(fixedDelayString = "${dere.transmission.poll-delay-ms:30000}")
+  public void pollDueBatches() {
+    var agora = Instant.now();
+    for (var lote : batches.findTop100ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(EventStatus.PROCESSING, agora)) {
+      try {
+        consulta.consultar(lote.getId());
+      } catch (RuntimeException ex) {
+        consulta.adiar(lote.getId());
+      }
+    }
+    consulta.reconsultarRecibosFalsos();
+  }
 }

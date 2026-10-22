@@ -21,38 +21,38 @@ class TransmissaoIntegrationTest extends IntegrationTestSupport {
         .andReturn();
     Number batchId = JsonPath.read(envio.getResponse().getContentAsString(), "$.transmissao.batchId");
 
-    mockMvc.perform(post("/api/transmissions/" + batchId + "/query")
+    autenticado(post("/api/transmissions/" + batchId + "/query")
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.receiptNumber").isNotEmpty());
 
-    mockMvc.perform(get("/api/transmissions")
+    autenticado(get("/api/transmissions")
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].batchId").value(batchId.intValue()));
 
-    mockMvc.perform(get("/api/transmissions/" + batchId)
+    autenticado(get("/api/transmissions/" + batchId)
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.protocol").isNotEmpty())
         .andExpect(jsonPath("$.eventXml").isNotEmpty());
 
-    mockMvc.perform(get("/api/transmissions/" + batchId + "/protocolo.pdf")
+    autenticado(get("/api/transmissions/" + batchId + "/protocolo.pdf")
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/transmissions/relatorio.pdf")
+    autenticado(post("/api/transmissions/relatorio.pdf")
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId)
             .contentType(MediaType.APPLICATION_JSON)
             .content("[]"))
         .andExpect(status().isOk());
 
-    mockMvc.perform(delete("/api/transmissions/" + batchId)
+    autenticado(delete("/api/transmissions/" + batchId)
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isNoContent());

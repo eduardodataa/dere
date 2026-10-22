@@ -13,6 +13,7 @@ import br.gov.dere.application.validacao.relatorio.Critica;
 import br.gov.dere.application.validacao.relatorio.RelatorioValidacao;
 import br.gov.dere.application.validacao.relatorio.TipoCritica;
 import br.gov.dere.domain.EventStatus;
+import br.gov.dere.domain.transmissao.ResultadoConsulta;
 import br.gov.dere.integration.receita.ExcecaoTransmissaoGoverno;
 import br.gov.dere.integration.signature.DereXmlSigner;
 import br.gov.dere.integration.signature.DereXmlSignatureVerifier;
@@ -56,6 +57,7 @@ public class TransmissaoSimuladaService {
   private final DereBatchRepository batches;
   private final DereTentativaTransmissaoRepository attempts;
   private final ArmazenamentoArtefatoTransmissao artefatos;
+  private final TransacaoIsolada transacao;
   private final ConstrutorXmlRetornoOficial retornos = new ConstrutorXmlRetornoOficial();
   private final DereXmlSigner signer = new DereXmlSigner();
   private final DereXmlSignatureVerifier verifier = new DereXmlSignatureVerifier();
@@ -75,7 +77,8 @@ public class TransmissaoSimuladaService {
       DereEventErrorRepository eventErrors,
       DereBatchRepository batches,
       DereTentativaTransmissaoRepository attempts,
-      ArmazenamentoArtefatoTransmissao artefatos) {
+      ArmazenamentoArtefatoTransmissao artefatos,
+      TransacaoIsolada transacao) {
     this.integration = integration;
     this.government = government;
     this.access = access;
@@ -87,9 +90,9 @@ public class TransmissaoSimuladaService {
     this.batches = batches;
     this.attempts = attempts;
     this.artefatos = artefatos;
+    this.transacao = transacao;
   }
 
-  @Transactional
   public ResultadoEnvioSimulado simulate(Long userId, Long entityId, RequisicaoEnvioSimulado request) {
     exigirMock();
     access.assertAccess(userId, entityId);
@@ -108,56 +111,45 @@ public class TransmissaoSimuladaService {
     if (jaEnviado.isPresent()) {
       var existente = jaEnviado.get();
       var loteExistente = existente.getBatchId() == null ? null : batches.findById(existente.getBatchId()).orElse(null);
+      var problema = existente.getStatus() == EventStatus.RESULTADO_DESCONHECIDO
+          ? "O envio anterior deste id não teve confirmação da Receita. O lote pode ter sido recebido. Não reenvie este id; concilie pelo protocolo, se a Receita o tiver emitido."
+          : "Já existe transmissão com este id. O lote anterior está em Transmissões. Para alteração ou exclusão use outro id (tpOper 2 ou 3).";
       return new ResultadoEnvioSimulado(false, comCritica(relatorio, arquivo, "id", identificador,
-          "Identificador de evento ainda não transmitido",
-          "Já existe transmissão com este id. O lote anterior está em Transmissões. Para alteração ou exclusão use outro id (tpOper 2 ou 3)."),
+          "Identificador de evento ainda não transmitido", problema),
           loteExistente == null ? visao(null, existente) : visao(loteExistente, existente));
     }
+    var cfg = integration.current();
+    SigningKey chave;
+    String assinado;
+    String loteXml;
     try {
-      var cfg = integration.current();
-      var chave = carregarChave(entityId);
-      var assinado = signer.sign(xml, chave.keyStore(), chave.password(), chave.alias());
+      chave = carregarChave(entityId);
+      assinado = signer.sign(xml, chave.keyStore(), chave.password(), chave.alias());
       if (!verifier.verify(assinado, chave.keyStore(), chave.alias())) throw new IllegalStateException("Assinatura XMLDSig inválida");
-      var lote = new DereBatchBuilder().build(cnpj, List.of(assinado));
-      var evento = new DereEventEntity(leiaute, identificador, cfg.environment(), cfg.schemaVersion(), null);
-      evento.ownedBy(userId, entityId);
-      evento.source(arquivo, null, !cfg.realAdapterEnabled());
-      evento.operation(operacao(leiaute, xml));
-      evento = events.saveAndFlush(evento);
-      evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), !cfg.realAdapterEnabled());
-      events.saveAndFlush(evento);
-      evento.unsigned(artefatos.guardar(identificador, "evento", xml));
-      events.saveAndFlush(evento);
-      evento.signed(artefatos.guardar(identificador, "assinado", assinado));
-      events.saveAndFlush(evento);
-      var batch = new DereBatchEntity("<DeRE/>");
-      batch.ownedBy(userId, entityId);
-      batch = batches.saveAndFlush(batch);
-      batch.request(artefatos.guardar(identificador, "lote", lote));
-      batches.saveAndFlush(batch);
-      evento.attachBatch(batch.getId());
-      events.saveAndFlush(evento);
-      var agora = Instant.now();
-      String protocolo;
-      String recepcao;
+      loteXml = new DereBatchBuilder().build(cnpj, List.of(assinado));
+    } catch (ResponseStatusException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      throw falhaLocal(ex, identificador);
+    }
+    var preparado = transacao.executar(() -> persistirEnvio(userId, entityId, cfg.environment(), cfg.schemaVersion(), cfg.realAdapterEnabled(), leiaute, identificador, arquivo, xml, csv, assinado, loteXml));
+    try {
       if (cfg.realAdapterEnabled()) {
-        var envio = government.submit(lote, identificador);
-        protocolo = envio.protocol() == null || envio.protocol().isBlank() ? novoProtocolo() : envio.protocol();
-        recepcao = envio.responseBody() == null ? "" : envio.responseBody();
-        registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, envio.httpStatus(), false);
-      } else {
-        protocolo = novoProtocolo();
-        recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
-        registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, 200, true);
+        var envio = government.submit(loteXml, identificador);
+        if (envio.protocol() == null || envio.protocol().isBlank()) {
+          throw new ExcecaoTransmissaoGoverno(502, true, envio.responseBody());
+        }
+        var recepcao = envio.responseBody() == null ? "" : envio.responseBody();
+        return transacao.executar(() -> concluirEnvio(preparado, envio.protocol(), recepcao, envio.httpStatus(), false, leiaute, userId, entityId, arquivo, xml, relatorio));
       }
-      batch.received(protocolo, artefatos.guardar(identificador, "recepcao", recepcao));
-      batches.saveAndFlush(batch);
-      evento.sent();
-      events.saveAndFlush(evento);
-      if ("D-1001".equals(leiaute)) importD1001.persistValidatedXml(userId, entityId, arquivo, xml);
-      return new ResultadoEnvioSimulado(true, relatorio, visao(batch, evento));
+      var agora = Instant.now();
+      var protocolo = novoProtocolo();
+      var recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
+      return transacao.executar(() -> concluirEnvio(preparado, protocolo, recepcao, 200, true, leiaute, userId, entityId, arquivo, xml, relatorio));
     } catch (ExcecaoTransmissaoGoverno ex) {
-      throw falhaGoverno(ex, identificador);
+      var definitiva = recusaDefinitiva(ex);
+      if (definitiva) transacao.executar(() -> rejeitarEnvio(preparado, ex));
+      throw definitiva ? falhaGoverno(ex, identificador) : falhaDesconhecido(ex, identificador);
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
@@ -165,7 +157,6 @@ public class TransmissaoSimuladaService {
     }
   }
 
-  @Transactional
   public ConsultaProtocolo consultarProtocolo(Long userId, Long entityId, String protocolo) {
     access.assertAccess(userId, entityId);
     var numero = protocolo == null ? "" : protocolo.trim();
@@ -188,26 +179,8 @@ public class TransmissaoSimuladaService {
     }
     try {
       var consulta = government.query(numero);
-      var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
-      var recibo = consulta.receipt() == null || consulta.receipt().isBlank() ? null : consulta.receipt();
-      var status = switch (consulta.state()) {
-        case ACCEPTED, ACCEPTED_WITH_WARNINGS -> EventStatus.ACCEPTED;
-        case REJECTED -> EventStatus.REJECTED;
-        default -> EventStatus.PROCESSING;
-      };
-      VisaoTransmissao local = null;
-      if (batch != null) {
-        var evento = eventoDoLote(batch.getId());
-        batch.completed(status, artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno));
-        batches.save(batch);
-        if (status != EventStatus.PROCESSING) {
-          evento.processed(status, recibo);
-          events.save(evento);
-        }
-        registrarTentativa(evento.getId(), "QUERY", numero, retorno, consulta.httpStatus(), false);
-        local = visao(batch, evento);
-      }
-      return new ConsultaProtocolo(numero, status.name(), recibo, consulta.codigoGoverno(), retorno, local, null);
+      if (batch == null) return consultaSemLote(numero, consulta);
+      return transacao.executar(() -> gravarConsultaProtocolo(batch.getId(), numero, consulta));
     } catch (ExcecaoTransmissaoGoverno ex) {
       throw falhaConsulta(numero, ex);
     } catch (ResponseStatusException ex) {
@@ -217,7 +190,6 @@ public class TransmissaoSimuladaService {
     }
   }
 
-  @Transactional
   public VisaoTransmissao query(Long userId, Long entityId, Long batchId) {
     exigirMock();
     access.assertAccess(userId, entityId);
@@ -226,45 +198,17 @@ public class TransmissaoSimuladaService {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lote de outra entidade");
     }
     var evento = eventoDoLote(batchId);
-    if (evento.getReceiptNumber() != null && !evento.getReceiptNumber().isBlank()) return visao(batch, evento);
+    if (reciboFinal(evento)) return visao(batch, evento);
+    if (batch.getProtocol() == null || batch.getProtocol().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "O lote pode ter sido recebido pela Receita, mas o protocolo não foi confirmado. Não reenvie este identificador. Concilie pelo protocolo, se a Receita o tiver emitido.");
+    }
     try {
-      var cfg = integration.current();
-      if (cfg.realAdapterEnabled()) {
+      if (integration.current().realAdapterEnabled()) {
         var consulta = government.query(batch.getProtocol());
-        var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
-        var recibo = consulta.receipt() == null || consulta.receipt().isBlank() ? null : consulta.receipt();
-        var status = switch (consulta.state()) {
-          case ACCEPTED, ACCEPTED_WITH_WARNINGS -> EventStatus.ACCEPTED;
-          case REJECTED -> EventStatus.REJECTED;
-          default -> EventStatus.PROCESSING;
-        };
-        batch.completed(status, artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno));
-        batches.save(batch);
-        if (status != EventStatus.PROCESSING) {
-          evento.processed(status, recibo);
-          events.save(evento);
-        }
-        registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), retorno, consulta.httpStatus(), false);
-        return visao(batch, evento);
+        return transacao.executar(() -> gravarConsultaReal(batchId, consulta));
       }
-      var chave = carregarChave(entityId);
-      var agora = Instant.now();
-      var recebido = batch.getSentAt() == null ? agora : batch.getSentAt();
-      var xmlEvento = artefatos.ler(evento.getXmlUnsigned());
-      var periodo = periodo(evento.getEventType(), xmlEvento);
-      var recibo = novoRecibo(batch.getId());
-      var hash = hash(xmlEvento);
-      var tabela = retornos.eventoTabela(evento.getEventIdentifier(), access.entity(entityId).getCnpjRoot(),
-          evento.getEventType(), batch.getProtocol(), recibo, hash, recebido, agora, periodo[0], periodo[1]);
-      var tabelaAssinada = assinar(tabela, chave);
-      var consulta = assinar(retornos.consulta(access.entity(entityId).getCnpjRoot(), access.entity(entityId).getCnpjRoot(),
-          batch.getProtocol(), recebido, agora, tabelaAssinada), chave);
-      batch.completed(EventStatus.ACCEPTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", consulta));
-      batches.save(batch);
-      evento.processed(EventStatus.ACCEPTED, recibo);
-      events.save(evento);
-      registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), consulta, 200, true);
-      return visao(batch, evento);
+      var simulada = prepararConsultaSimulada(entityId, batch, evento);
+      return transacao.executar(() -> gravarConsultaSimulada(batchId, simulada.recibo(), simulada.xml()));
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
@@ -307,6 +251,167 @@ public class TransmissaoSimuladaService {
     batches.delete(batch);
   }
 
+  private Preparacao persistirEnvio(
+      Long userId,
+      Long entityId,
+      String environment,
+      String schemaVersion,
+      boolean adaptadorReal,
+      String leiaute,
+      String identificador,
+      String arquivo,
+      String xml,
+      String csv,
+      String assinado,
+      String loteXml) {
+    var evento = new DereEventEntity(leiaute, identificador, environment, schemaVersion, null);
+    evento.ownedBy(userId, entityId);
+    evento.source(arquivo, null, !adaptadorReal);
+    evento.operation(operacao(leiaute, xml));
+    evento = events.saveAndFlush(evento);
+    evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), !adaptadorReal);
+    events.saveAndFlush(evento);
+    evento.unsigned(artefatos.guardar(identificador, "evento", xml));
+    events.saveAndFlush(evento);
+    evento.signed(artefatos.guardar(identificador, "assinado", assinado));
+    evento.resultadoDesconhecido();
+    events.saveAndFlush(evento);
+    var batch = new DereBatchEntity("<DeRE/>");
+    batch.ownedBy(userId, entityId);
+    batch = batches.saveAndFlush(batch);
+    batch.request(artefatos.guardar(identificador, "lote", loteXml));
+    batch.resultadoDesconhecido();
+    batches.saveAndFlush(batch);
+    evento.attachBatch(batch.getId());
+    events.saveAndFlush(evento);
+    return new Preparacao(evento.getId(), batch.getId());
+  }
+
+  private ResultadoEnvioSimulado concluirEnvio(
+      Preparacao preparado,
+      String protocolo,
+      String recepcao,
+      int httpStatus,
+      boolean mock,
+      String leiaute,
+      Long userId,
+      Long entityId,
+      String arquivo,
+      String xml,
+      RelatorioValidacao relatorio) {
+    var evento = events.findById(preparado.eventId()).orElseThrow();
+    var batch = batches.findById(preparado.batchId()).orElseThrow();
+    registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, httpStatus, mock);
+    batch.received(protocolo, artefatos.guardar(evento.getEventIdentifier(), "recepcao", recepcao));
+    batches.saveAndFlush(batch);
+    evento.sent();
+    events.saveAndFlush(evento);
+    if ("D-1001".equals(leiaute)) importD1001.persistValidatedXml(userId, entityId, arquivo, xml);
+    return new ResultadoEnvioSimulado(true, relatorio, visao(batch, evento));
+  }
+
+  private Void rejeitarEnvio(Preparacao preparado, ExcecaoTransmissaoGoverno ex) {
+    var evento = events.findById(preparado.eventId()).orElseThrow();
+    var batch = batches.findById(preparado.batchId()).orElseThrow();
+    var corpo = ex.responseBody() == null ? "" : ex.responseBody();
+    batch.completed(EventStatus.REJECTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", corpo));
+    batches.save(batch);
+    evento.processed(EventStatus.REJECTED, null);
+    events.save(evento);
+    var proxima = attempts.findTopByEventIdAndOperationOrderByAttemptDesc(evento.getId(), "SUBMIT")
+        .map(item -> (item.getAttempt() == null ? 0 : item.getAttempt()) + 1)
+        .orElse(1);
+    var tentativa = new DereTentativaTransmissaoEntity(evento.getId(), "SUBMIT", proxima, UUID.randomUUID().toString());
+    tentativa.complete("FAILURE", ex.statusCode(), "GOV_REJECTED", 0, "receita://submit/", "receita://retorno/", null);
+    attempts.save(tentativa);
+    return null;
+  }
+
+  private boolean reciboFinal(DereEventEntity evento) {
+    var recibo = evento.getReceiptNumber();
+    if (recibo == null || recibo.isBlank()) return false;
+    return evento.isSimulated() || !integration.current().realAdapterEnabled() || !Recibos.falso(recibo);
+  }
+
+  private static boolean recusaDefinitiva(ExcecaoTransmissaoGoverno ex) {
+    var http = ex.statusCode();
+    return http == 400 || http == 401 || http == 403 || http == 404;
+  }
+
+  private ConsultaProtocolo consultaSemLote(String numero, ResultadoConsulta consulta) {
+    var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
+    return new ConsultaProtocolo(numero, statusReceita(consulta).name(), reciboDe(consulta), consulta.codigoGoverno(), retorno, null, null);
+  }
+
+  private ConsultaProtocolo gravarConsultaProtocolo(Long batchId, String numero, ResultadoConsulta consulta) {
+    var batch = batches.findById(batchId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado"));
+    var evento = eventoDoLote(batchId);
+    aplicarRetorno(batch, evento, consulta, numero);
+    return new ConsultaProtocolo(numero, statusReceita(consulta).name(), reciboDe(consulta), consulta.codigoGoverno(),
+        consulta.responseBody() == null ? "" : consulta.responseBody(), visao(batch, evento), null);
+  }
+
+  private VisaoTransmissao gravarConsultaReal(Long batchId, ResultadoConsulta consulta) {
+    var batch = batches.findById(batchId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado"));
+    var evento = eventoDoLote(batchId);
+    aplicarRetorno(batch, evento, consulta, batch.getProtocol());
+    return visao(batch, evento);
+  }
+
+  private void aplicarRetorno(DereBatchEntity batch, DereEventEntity evento, ResultadoConsulta consulta, String protocolo) {
+    var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
+    var status = statusReceita(consulta);
+    batch.completed(status, artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno));
+    batches.save(batch);
+    if (status != EventStatus.PROCESSING) {
+      evento.processed(status, reciboDe(consulta));
+      events.save(evento);
+    }
+    registrarTentativa(evento.getId(), "QUERY", protocolo, retorno, consulta.httpStatus(), false);
+  }
+
+  private ConsultaSimulada prepararConsultaSimulada(Long entityId, DereBatchEntity batch, DereEventEntity evento) throws Exception {
+    var chave = carregarChave(entityId);
+    var agora = Instant.now();
+    var recebido = batch.getSentAt() == null ? agora : batch.getSentAt();
+    var xmlEvento = artefatos.ler(evento.getXmlUnsigned());
+    var periodo = periodo(evento.getEventType(), xmlEvento);
+    var recibo = novoRecibo(batch.getId());
+    var hash = hash(xmlEvento);
+    var entidade = access.entity(entityId);
+    var tabela = retornos.eventoTabela(evento.getEventIdentifier(), entidade.getCnpjRoot(),
+        evento.getEventType(), batch.getProtocol(), recibo, hash, recebido, agora, periodo[0], periodo[1]);
+    var tabelaAssinada = assinar(tabela, chave);
+    var consulta = assinar(retornos.consulta(entidade.getCnpjRoot(), entidade.getCnpjRoot(),
+        batch.getProtocol(), recebido, agora, tabelaAssinada), chave);
+    return new ConsultaSimulada(recibo, consulta);
+  }
+
+  private VisaoTransmissao gravarConsultaSimulada(Long batchId, String recibo, String consulta) {
+    var batch = batches.findById(batchId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado"));
+    var evento = eventoDoLote(batchId);
+    batch.completed(EventStatus.ACCEPTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", consulta));
+    batches.save(batch);
+    evento.processed(EventStatus.ACCEPTED, recibo);
+    events.save(evento);
+    registrarTentativa(evento.getId(), "QUERY", batch.getProtocol(), consulta, 200, true);
+    return visao(batch, evento);
+  }
+
+  private static String reciboDe(ResultadoConsulta consulta) {
+    return consulta.receipt() == null || consulta.receipt().isBlank() ? null : consulta.receipt();
+  }
+
+  private static EventStatus statusReceita(ResultadoConsulta consulta) {
+    return switch (consulta.state()) {
+      case ACCEPTED, ACCEPTED_WITH_WARNINGS -> EventStatus.ACCEPTED;
+      case REJECTED -> EventStatus.REJECTED;
+      default -> EventStatus.PROCESSING;
+    };
+  }
+
+  private record ConsultaSimulada(String recibo, String xml) {}
+
   private DereEventEntity eventoDoLote(Long batchId) {
     return events.findByBatchId(batchId).stream()
         .max(Comparator.comparing(DereEventEntity::getId))
@@ -343,6 +448,9 @@ public class TransmissaoSimuladaService {
   private SigningKey carregarChave(Long entityId) throws Exception {
     var disponiveis = certificates.list(entityId);
     if (disponiveis.isEmpty()) {
+      if (integration.current().realAdapterEnabled()) {
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Cadastre o certificado A1 da entidade antes de enviar.");
+      }
       return new SigningKey(CertificadoTesteLocal.create(), "changeit".toCharArray(), "dere-test");
     }
     var carregado = certificates.loadForSigning(disponiveis.get(0).id());
@@ -440,6 +548,12 @@ public class TransmissaoSimuladaService {
     return protocolo.matches("1\\.\\d{14}\\.\\d{6}");
   }
 
+  private static FalhaTransmissaoException falhaDesconhecido(ExcecaoTransmissaoGoverno ex, String identificador) {
+    var diagnostico = ApresentacaoErroTransmissao.resultadoDesconhecido(ex, identificador);
+    ApresentacaoErroTransmissao.registrar(diagnostico, ex.responseBody());
+    return new FalhaTransmissaoException(diagnostico, ex);
+  }
+
   private static FalhaTransmissaoException falhaGoverno(ExcecaoTransmissaoGoverno ex, String identificador) {
     var diagnostico = ApresentacaoErroTransmissao.deGoverno(ex, identificador);
     ApresentacaoErroTransmissao.registrar(diagnostico, ex.responseBody());
@@ -472,4 +586,5 @@ public class TransmissaoSimuladaService {
   }
 
   private record SigningKey(java.security.KeyStore keyStore, char[] password, String alias) {}
+  private record Preparacao(Long eventId, Long batchId) {}
 }

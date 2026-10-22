@@ -23,11 +23,11 @@ public final class PoliticaAmbiente {
   public static ConfiguracaoIntegracao aplicar(String implantacao, ConfiguracaoIntegracao atual) {
     return switch (normalizar(implantacao)) {
       case STAGING -> new ConfiguracaoIntegracao(false, true, atual.baseUrl(), atual.tokenUrl(), atual.clientId(),
-          atual.clientSecret(), atual.clientSecretConfigured(), atual.environment(), atual.schemaVersion());
+          atual.clientSecret(), atual.clientSecretConfigured(), atual.environment(), atual.schemaVersion(), atual.limiteUploadMb());
       case HOMOLOGACAO -> new ConfiguracaoIntegracao(true, false, URL_PRE_PRODUCAO, atual.tokenUrl(), atual.clientId(),
-          atual.clientSecret(), atual.clientSecretConfigured(), "restricted-production", atual.schemaVersion());
+          atual.clientSecret(), atual.clientSecretConfigured(), "restricted-production", atual.schemaVersion(), atual.limiteUploadMb());
       case PRODUCAO -> new ConfiguracaoIntegracao(true, false, URL_PRODUCAO, atual.tokenUrl(), atual.clientId(),
-          atual.clientSecret(), atual.clientSecretConfigured(), "production", atual.schemaVersion());
+          atual.clientSecret(), atual.clientSecretConfigured(), "production", atual.schemaVersion(), atual.limiteUploadMb());
       default -> atual;
     };
   }

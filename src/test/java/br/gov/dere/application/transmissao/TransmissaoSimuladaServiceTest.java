@@ -107,6 +107,7 @@ class TransmissaoSimuladaServiceTest {
       porIdEvento.put(evento.getEventIdentifier(), evento);
       return evento;
     });
+    when(events.findById(anyLong())).thenAnswer(inv -> Optional.ofNullable(eventos.get(inv.getArgument(0))));
     when(events.findByEventIdentifier(anyString())).thenAnswer(inv -> Optional.ofNullable(porIdEvento.get(inv.getArgument(0))));
     when(events.findByBatchId(anyLong())).thenAnswer(inv -> eventos.values().stream().filter(item -> inv.getArgument(0).equals(item.getBatchId())).toList());
     when(batches.save(any())).thenAnswer(inv -> {
@@ -127,11 +128,11 @@ class TransmissaoSimuladaServiceTest {
     var integration = mock(ConfiguracaoIntegracaoService.class);
     when(integration.current()).thenReturn(new ConfiguracaoIntegracao(
         false, mockEnabled, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
-        "", null, false, "restricted-production", "nota_2026_001"));
+        "", null, false, "restricted-production", "nota_2026_001", 50));
     return new TransmissaoSimuladaService(integration, mock(TransmissaoGovernoPort.class), access,
         new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events,
         mock(br.gov.dere.persistence.DereEventErrorRepository.class), batches, attempts,
-        new ArmazenamentoArtefatoTransmissao());
+        new ArmazenamentoArtefatoTransmissao(), TransacaoIsolada.direta());
   }
 
   private static void assertXsd(String xml, String xsd) {

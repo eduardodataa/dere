@@ -23,4 +23,20 @@ class XmlSupportValidationTest {
     var joined = issues.stream().map(XmlSupport.Issue::message).reduce("", (a,b)->a+" "+b);
     assertTrue(joined.contains("id") || joined.contains("tpOper") || joined.contains("Signature") || joined.contains("evtInfoContrib"), joined);
   }
+
+  @Test
+  void rejeitaDoctypeAntesDoXsd() throws Exception {
+    var xml = """
+        <?xml version="1.0"?>
+        <!DOCTYPE DeRE [<!ENTITY xxe "expandido">]>
+        <DeRE xmlns="http://www.dere.gov.br/schemas/evtInfoContrib/v1_0_1">&xxe;</DeRE>
+        """;
+    var xsd = getClass().getResource("/dere/schemas/nota_2026_001/xsd/evtInfoContrib-v1_0_1.xsd");
+    assertNotNull(xsd);
+    var issues = XmlSupport.validateCollecting(xml, xsd);
+    assertFalse(issues.isEmpty());
+    assertTrue(issues.stream().anyMatch(issue -> issue.message() != null && issue.message().contains("DOCTYPE")));
+    var falha = assertThrows(Exception.class, () -> XmlSupport.validate(xml, xsd));
+    assertTrue(falha.getMessage().contains("DOCTYPE"));
+  }
 }

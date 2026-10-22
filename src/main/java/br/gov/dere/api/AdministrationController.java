@@ -83,14 +83,12 @@ public class AdministrationController {
   }
 
   @GetMapping("/entities")
-  public List<EntityDto> entities(@RequestHeader(value = "X-User-Id", required = false) Long actorId) {
+  public List<EntityDto> entities(@RequestHeader("X-User-Id") Long actorId) {
+    var actor = users.findById(actorId).orElseThrow();
     var visible = entities.findAll().stream();
-    if (actorId != null) {
-      var actor = users.findById(actorId).orElseThrow();
-      if (!actor.isMaster()) {
-        var allowed = actor.getEntities().stream().map(DereEntityEntity::getId).toList();
-        visible = visible.filter(entity -> allowed.contains(entity.getId()));
-      }
+    if (!actor.isMaster()) {
+      var allowed = actor.getEntities().stream().map(DereEntityEntity::getId).toList();
+      visible = visible.filter(entity -> allowed.contains(entity.getId()));
     }
     return visible.sorted(Comparator.comparing(DereEntityEntity::getLegalName)).map(entity -> toDto(entity, userIds(entity))).toList();
   }

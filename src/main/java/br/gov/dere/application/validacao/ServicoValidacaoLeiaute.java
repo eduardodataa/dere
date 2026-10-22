@@ -92,6 +92,10 @@ public class ServicoValidacaoLeiaute {
   public RelatorioValidacao validarXml(String leiaute, String xml, String nomeArquivo, String cnpjEsperado, Long idEntidade) {
     var arquivo = vazioPara(nomeArquivo, "arquivo.xml");
     var criticas = new ArrayList<Critica>();
+    if (xml != null && xml.toLowerCase().contains("<!doctype")) {
+      criticas.add(new Critica(arquivo, 1, "Documento", "", TipoCritica.ESTRUTURA, "XML sem DOCTYPE", "Documento com DOCTYPE não é aceito.", "/DeRE"));
+      return finalizar(leiaute, "XML", arquivo, 0, criticas, xml, "");
+    }
     var eventoEsperado = evento(leiaute);
     var detectado = detectar(xml);
     if (detectado != null && !eventoEsperado.equals(detectado)) {

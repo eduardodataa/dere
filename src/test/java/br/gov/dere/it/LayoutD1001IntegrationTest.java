@@ -14,7 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 class LayoutD1001IntegrationTest extends IntegrationTestSupport {
   @Test
   void baixarModeloCsv() throws Exception {
-    mockMvc.perform(get("/api/layouts/D-1001/modelo.csv"))
+    autenticado(get("/api/layouts/D-1001/modelo.csv"))
         .andExpect(status().isOk())
         .andExpect(content().string(org.hamcrest.Matchers.containsString("id;")));
   }
@@ -22,7 +22,7 @@ class LayoutD1001IntegrationTest extends IntegrationTestSupport {
   @Test
   void validarCsv() throws Exception {
     var csv = withUniqueId(fixture("envio-ciclo/1001-incluir.csv"));
-    mockMvc.perform(post("/api/validation/csv-to-xml")
+    autenticado(post("/api/validation/csv-to-xml")
             .contentType(MediaType.parseMediaType("text/csv"))
             .header("X-Entity-Id", entityId)
             .content(csv))
@@ -33,7 +33,7 @@ class LayoutD1001IntegrationTest extends IntegrationTestSupport {
   @Test
   void validarXml() throws Exception {
     var xml = withUniqueId(fixture("envio-ciclo/1001-incluir.xml"));
-    mockMvc.perform(post("/api/validation/xml-to-csv")
+    autenticado(post("/api/validation/xml-to-csv")
             .contentType(MediaType.APPLICATION_XML)
             .header("X-Entity-Id", entityId)
             .content(xml))
@@ -45,7 +45,7 @@ class LayoutD1001IntegrationTest extends IntegrationTestSupport {
   void importarXml() throws Exception {
     var xml = withUniqueId(fixture("envio-ciclo/1001-incluir.xml"));
     var file = new MockMultipartFile("file", "1001-incluir.xml", "application/xml", xml.getBytes());
-    mockMvc.perform(multipart("/api/layouts/d1001/import")
+    autenticado(multipart("/api/layouts/d1001/import")
             .file(file)
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))

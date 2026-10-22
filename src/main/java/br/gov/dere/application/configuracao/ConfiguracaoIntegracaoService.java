@@ -1,11 +1,14 @@
 package br.gov.dere.application.configuracao;
 
+import br.gov.dere.application.ingestion.LeitorXmlUpload;
 import br.gov.dere.integration.certificado.PocSecretBox;
 import br.gov.dere.persistence.DereAppSettingEntity;
 import br.gov.dere.persistence.DereAppSettingRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ConfiguracaoIntegracaoService {
@@ -17,6 +20,7 @@ public class ConfiguracaoIntegracaoService {
   public static final String CLIENT_SECRET = "integration.client_secret";
   public static final String ENVIRONMENT = "integration.environment";
   public static final String SCHEMA = "integration.schema_version";
+  public static final String LIMITE_UPLOAD = "integration.upload_limit_mb";
 
   private final DereAppSettingRepository repo;
   private final PocSecretBox box;
@@ -68,7 +72,8 @@ public class ConfiguracaoIntegracaoService {
         secretPlain,
         secretPlain != null && !secretPlain.isBlank(),
         textOf(ENVIRONMENT, defaultEnvironment),
-        textOf(SCHEMA, defaultSchema));
+        textOf(SCHEMA, defaultSchema),
+        limiteOf());
   }
 
   public ConfiguracaoIntegracao publicView() {
@@ -82,7 +87,8 @@ public class ConfiguracaoIntegracaoService {
         null,
         atual.clientSecretConfigured(),
         atual.environment(),
-        atual.schemaVersion());
+        atual.schemaVersion(),
+        atual.limiteUploadMb());
   }
 
   @Transactional
@@ -97,7 +103,27 @@ public class ConfiguracaoIntegracaoService {
     }
     if (update.environment() != null) gravar(ENVIRONMENT, update.environment().trim());
     if (update.schemaVersion() != null) gravar(SCHEMA, update.schemaVersion().trim());
+    if (update.limiteUploadMb() != null) {
+      var limite = update.limiteUploadMb();
+      if (limite < 1 || limite > LeitorXmlUpload.LIMITE_MB) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            "O limite de upload deve ficar entre 1 e " + LeitorXmlUpload.LIMITE_MB + " MB.");
+      }
+      gravar(LIMITE_UPLOAD, String.valueOf(limite));
+    }
     return publicView();
+  }
+
+  private int limiteOf() {
+    var texto = ler(LIMITE_UPLOAD, null);
+    if (texto == null || texto.isBlank()) return LeitorXmlUpload.LIMITE_MB;
+    try {
+      var valor = Integer.parseInt(texto.trim());
+      if (valor < 1 || valor > LeitorXmlUpload.LIMITE_MB) return LeitorXmlUpload.LIMITE_MB;
+      return valor;
+    } catch (NumberFormatException ex) {
+      return LeitorXmlUpload.LIMITE_MB;
+    }
   }
 
   private boolean booleanOf(String key, boolean padrao) {

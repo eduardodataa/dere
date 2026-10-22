@@ -21,12 +21,20 @@ public class D1199ValidacaoController {
   }
 
   @PostMapping(value = "/validate-csv", consumes = "text/csv")
-  public RelatorioValidacao validarCsv(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao validarCsv(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarCsv("D-1199", corpo, "d1199.csv", cnpj(idEntidade), idEntidade);
   }
 
   @PostMapping(value = "/validate-xml", consumes = "application/xml")
-  public RelatorioValidacao validarXml(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao validarXml(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarXml("D-1199", corpo, "d1199.xml", cnpj(idEntidade), idEntidade);
   }
 

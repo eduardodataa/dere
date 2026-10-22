@@ -26,11 +26,16 @@ import seloDere from './dere-selo.jpg';
 
 const apiPrefix = (window.location.pathname.match(/^\/dere(?:-stg|-hml)?(?=\/|$)/) || [''])[0];
 const api = axios.create();
+let tokenSessao = null;
 api.interceptors.request.use((config) => {
   const url = config.url || '';
   const root = `/${'api'}/`;
   if (url.startsWith(root) && !url.startsWith(`${apiPrefix}${root}`)) {
     config.url = `${apiPrefix}${url}`;
+  }
+  if (tokenSessao) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${tokenSessao}`;
   }
   return config;
 });
@@ -160,6 +165,7 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     clientSecretConfigured: false,
     environment: 'restricted-production',
     schemaVersion: 'nota_2026_001',
+    limiteUploadMb: 50,
   });
   const [carregando, setCarregando] = useState(false);
   const [implantacao, setImplantacao] = useState('local');
@@ -191,6 +197,12 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     setCarregando(true);
     try {
       const corpo = { ...integracao };
+      const limite = Number(corpo.limiteUploadMb);
+      if (!Number.isInteger(limite) || limite < 1 || limite > 50) {
+        setMessage('O limite de upload deve ficar entre 1 e 50 MB.');
+        return;
+      }
+      corpo.limiteUploadMb = limite;
       if (!corpo.clientSecret) delete corpo.clientSecret;
       const response = await api.put('/api/settings/integration', corpo, { headers: { 'X-User-Id': uid } });
       setIntegracao(atual => ({ ...atual, ...response.data, clientSecret: '' }));
@@ -217,6 +229,7 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     <TextField label="Client secret" type="password" fullWidth disabled={!master} value={integracao.clientSecret || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientSecret: event.target.value }))} helperText={integracao.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} />
     <TextField label="Ambiente" fullWidth disabled={!master || canalTravado} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
     <TextField label="Versão de schema" fullWidth disabled={!master} value={integracao.schemaVersion || ''} onChange={event => setIntegracao(atual => ({ ...atual, schemaVersion: event.target.value }))} />
+    <TextField label="Limite de upload (MB)" type="number" fullWidth disabled={!master} value={integracao.limiteUploadMb ?? 50} onChange={event => setIntegracao(atual => ({ ...atual, limiteUploadMb: event.target.value === '' ? '' : Number(event.target.value) }))} helperText="XML avulso e ZIP já descompactado. O máximo é 50 MB." slotProps={{ htmlInput: { min: 1, max: 50, step: 1 } }} />
     <Box><Button variant="contained" disabled={!master || carregando} onClick={salvarIntegracao}>{carregando ? 'Salvando…' : 'Salvar integração'}</Button></Box>
   </Stack></CardContent></Card>;
 
@@ -276,7 +289,7 @@ function App() {
       if (list[0]) setEid(current => list.some(entity => entity.id === current) ? current : list[0].id);
     } catch { setMessage('Falha ao carregar entidades'); }
   };
-  useEffect(() => { api.get('/api/admin/entities').then(response => setEntities(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, []);
+  useEffect(() => { if (!uid) return; api.get('/api/admin/entities').then(response => setEntities(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, [uid]);
   useEffect(() => { if (uid && eid) api.get(`/api/certificates/entity/${eid}`).then(response => setCertificados(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, [uid, eid]);
   useEffect(() => { if (message) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [message]);
   useEffect(() => {
@@ -303,7 +316,8 @@ function App() {
       const response = await api.post('/api/auth/login', { login, password });
       setUid(response.data.userId);
       setMaster(!!response.data.master);
-      api.defaults.headers.common['X-User-Id'] = response.data.userId;
+      tokenSessao = response.data.token;
+      api.defaults.headers.common.Authorization = `Bearer ${response.data.token}`;
       setPassword('');
       setMessage('');
       await load();
@@ -315,6 +329,8 @@ function App() {
     }
   }
   function signOut() {
+    tokenSessao = null;
+    delete api.defaults.headers.common.Authorization;
     delete api.defaults.headers.common['X-User-Id'];
     setUid(undefined);
     setMaster(false);
@@ -716,6 +732,7 @@ function rotuloOperacaoEnvio(operacao) {
 }
 
 function rotuloStatusEnvio(status) {
+  if (status === 'RESULTADO_DESCONHECIDO') return 'Resultado desconhecido';
   if (status === 'PROCESSING' || status === 'PROTOCOL_RECEIVED') return 'Recebida para processamento';
   if (status === 'ACCEPTED') return 'Aceita';
   if (status === 'ACCEPTED_WITH_WARNINGS') return 'Aceita com avisos';
@@ -724,6 +741,7 @@ function rotuloStatusEnvio(status) {
 }
 
 function grupoSituacao(status) {
+  if (status === 'RESULTADO_DESCONHECIDO') return 'desconhecido';
   if (status === 'ACCEPTED' || status === 'ACCEPTED_WITH_WARNINGS') return 'aceita';
   if (status === 'REJECTED') return 'erro';
   if (status === 'PROCESSING' || status === 'PROTOCOL_RECEIVED') return 'processando';
@@ -732,6 +750,7 @@ function grupoSituacao(status) {
 
 function textoSituacaoEnvio(transmissao) {
   if (!transmissao) return 'Enviada. A situação na Receita ainda não foi confirmada.';
+  if (grupoSituacao(transmissao.status) === 'desconhecido') return 'O lote pode ter sido recebido pela Receita, mas o protocolo não foi confirmado. Não reenvie este identificador. Concilie pelo protocolo, se a Receita o tiver emitido.';
   const situacao = rotuloStatusEnvio(transmissao.status);
   if (grupoSituacao(transmissao.status) === 'aceita') return `Aceita pela Receita. ${transmissao.receiptNumber ? `Recibo ${transmissao.receiptNumber}.` : ''}`.trim();
   if (grupoSituacao(transmissao.status) === 'erro') return 'Rejeitada pela Receita. O protocolo registra a recepção, não a aceitação.';
@@ -928,7 +947,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
     if (!layout && filtroLayout && linha.layout !== filtroLayout) return false;
     if (filtroOperacao && String(linha.operationType) !== filtroOperacao) return false;
     if (filtroProtocolo && !(linha.protocol || '').toLowerCase().includes(filtroProtocolo.toLowerCase())) return false;
-    if (filtroStatus === 'PENDENCIAS' && !['processando', 'erro'].includes(grupoSituacao(linha.status))) return false;
+    if (filtroStatus === 'PENDENCIAS' && !['processando', 'erro', 'desconhecido'].includes(grupoSituacao(linha.status))) return false;
     if (filtroStatus && filtroStatus !== 'PENDENCIAS' && linha.status !== filtroStatus) return false;
     return noIntervalo(linha);
   });

@@ -1,20 +1,19 @@
 package br.gov.dere.application.d1001;
 
 import br.gov.dere.application.access.AccessService;
+import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import br.gov.dere.application.csv.DereCsvConverter;
 import br.gov.dere.application.validacao.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validacao.relatorio.Critica;
 import br.gov.dere.application.validacao.relatorio.RelatorioValidacao;
 import br.gov.dere.domain.contributor.D1001;
 import br.gov.dere.integration.xml.XmlSupport;
-import java.io.ByteArrayInputStream;
+import br.gov.dere.application.ingestion.LeitorXmlUpload;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -23,17 +22,17 @@ import org.w3c.dom.Element;
 
 @Service
 public class D1001ImportService {
-  private static final int MAX_XML_BYTES = 10_000_000;
-  private static final long MAX_BATCH_BYTES = 100_000_000L;
   private final JdbcTemplate jdbc;
   private final AccessService access;
   private final ServicoValidacaoLeiaute validacao;
+  private final ConfiguracaoIntegracaoService integracao;
   private final DereCsvConverter converter = new DereCsvConverter();
 
-  public D1001ImportService(JdbcTemplate jdbc, AccessService access, ServicoValidacaoLeiaute validacao) {
+  public D1001ImportService(JdbcTemplate jdbc, AccessService access, ServicoValidacaoLeiaute validacao, ConfiguracaoIntegracaoService integracao) {
     this.jdbc = jdbc;
     this.access = access;
     this.validacao = validacao;
+    this.integracao = integracao;
   }
 
   public void persistValidatedXml(Long userId, Long entityId, String sourceName, String xml) {
@@ -45,7 +44,7 @@ public class D1001ImportService {
   public RelatorioImportacao importFiles(MultipartFile file, Long userId, Long entityId) throws Exception {
     if (file.isEmpty()) throw new IllegalArgumentException("Arquivo vazio");
     String source = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xml");
-    List<NamedXml> documents = extract(file, source);
+    List<NamedXml> documents = extract(file);
     if (documents.isEmpty()) throw new IllegalArgumentException("Nenhum XML encontrado no arquivo");
     String cnpjEsperado = access.entity(entityId).getCnpjRoot();
     long totalBytes = documents.stream().mapToLong(x -> x.xml().getBytes(StandardCharsets.UTF_8).length).sum();
@@ -74,28 +73,10 @@ public class D1001ImportService {
     return new RelatorioImportacao(batchId, "D-1001", source, documents.size(), validos, invalidos, arquivos, toCsv(arquivos), csvConvertido(arquivos), criticas, planilha.relatorioXlsx());
   }
 
-  private List<NamedXml> extract(MultipartFile file, String source) throws Exception {
-    List<NamedXml> documents = new ArrayList<>();
-    if (source.toLowerCase().endsWith(".zip")) {
-      long total = 0;
-      try (var zip = new ZipInputStream(new ByteArrayInputStream(file.getBytes()))) {
-        ZipEntry entry;
-        while ((entry = zip.getNextEntry()) != null) {
-          String name = entry.getName();
-          if (entry.isDirectory() || unsafeZipName(name) || !name.toLowerCase().endsWith(".xml")) continue;
-          byte[] bytes = zip.readAllBytes();
-          total += bytes.length;
-          if (bytes.length > MAX_XML_BYTES || total > MAX_BATCH_BYTES)
-            throw new IllegalArgumentException("Lote ZIP excede o limite permitido");
-          documents.add(new NamedXml(name, new String(bytes, StandardCharsets.UTF_8)));
-        }
-      }
-    } else {
-      byte[] bytes = file.getBytes();
-      if (bytes.length > MAX_XML_BYTES) throw new IllegalArgumentException("XML excede 10 MB");
-      documents.add(new NamedXml(source, new String(bytes, StandardCharsets.UTF_8)));
-    }
-    return documents;
+  private List<NamedXml> extract(MultipartFile file) throws Exception {
+    return LeitorXmlUpload.ler(file, integracao.current().limiteUploadMb() * 1024 * 1024).stream()
+        .map(documento -> new NamedXml(documento.nome(), documento.xml()))
+        .toList();
   }
 
   private long insertBatch(Long userId, Long entityId, String source, int count, long bytes) {
@@ -158,10 +139,6 @@ public class D1001ImportService {
   private static String csv(Object v) {
     var s = v == null ? "" : String.valueOf(v);
     return s.contains(",") || s.contains("\"") || s.contains("\n") ? "\"" + s.replace("\"", "\"\"") + "\"" : s;
-  }
-
-  private static boolean unsafeZipName(String name) {
-    return name == null || name.startsWith("/") || name.startsWith("\\") || name.contains("..") || name.matches("^[A-Za-z]:.*");
   }
 
   public record ResultadoArquivo(String nomeArquivo, String idEvento, boolean valido, D1001 analisado, List<XmlSupport.Issue> problemas, List<Critica> criticas, String xml) {}

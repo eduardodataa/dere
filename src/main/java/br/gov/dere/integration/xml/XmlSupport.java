@@ -19,6 +19,7 @@ import org.xml.sax.SAXParseException;
 
 public final class XmlSupport {
   private static final Pattern FIELD = Pattern.compile("(?:element|elemento) '([^']+)'", Pattern.CASE_INSENSITIVE);
+  private static final Pattern DOCTYPE = Pattern.compile("<!DOCTYPE", Pattern.CASE_INSENSITIVE);
   private XmlSupport() {}
   public static String serialize(Document document) throws Exception {
     return serialize(document, true);
@@ -51,8 +52,10 @@ public final class XmlSupport {
     try {
       var source = new StreamSource(xsd.openStream());
       source.setSystemId(xsd.toExternalForm());
+      recusarDoctype(xml);
       var issues = new ArrayList<Issue>();
       var validator = schemaFactory().newSchema(source).newValidator();
+      proteger(validator);
       validator.setErrorHandler(new ErrorHandler() {
         public void warning(SAXParseException e) { issues.add(issue(e, "aviso")); }
         public void error(SAXParseException e) { issues.add(issue(e, "erro")); }
@@ -66,7 +69,22 @@ public final class XmlSupport {
     }
   }
   private static void validate(String xml, StreamSource xsd) throws Exception {
-    schemaFactory().newSchema(xsd).newValidator().validate(new StreamSource(new StringReader(xml)));
+    recusarDoctype(xml);
+    var validator = schemaFactory().newSchema(xsd).newValidator();
+    proteger(validator);
+    validator.validate(new StreamSource(new StringReader(xml)));
+  }
+
+  private static void recusarDoctype(String xml) throws SAXException {
+    if (xml != null && DOCTYPE.matcher(xml).find()) {
+      throw new SAXException("Documento com DOCTYPE não é aceito.");
+    }
+  }
+
+  private static void proteger(javax.xml.validation.Validator validator) throws SAXException {
+    validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+    validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+    validator.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
   }
   private static SchemaFactory schemaFactory() throws Exception {
     var sf = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);

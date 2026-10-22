@@ -103,4 +103,12 @@ public class DereEventEntity {
   public void signed(String xml) { xmlSigned = xml; status = EventStatus.SIGNED; }
   public void sent() { status = EventStatus.PROTOCOL_RECEIVED; sentAt = Instant.now(); }
   public void processed(EventStatus next, String receipt) { status = next; receiptNumber = receipt; processedAt = Instant.now(); }
+  public void resultadoDesconhecido() { status = EventStatus.RESULTADO_DESCONHECIDO; }
+  public void limparReciboFalso() {
+    receiptNumber = null;
+    if (status == EventStatus.ACCEPTED || status == EventStatus.ACCEPTED_WITH_WARNINGS) {
+      status = EventStatus.PROTOCOL_RECEIVED;
+      processedAt = null;
+    }
+  }
 }

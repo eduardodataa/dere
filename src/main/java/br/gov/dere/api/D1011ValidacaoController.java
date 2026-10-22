@@ -21,18 +21,29 @@ public class D1011ValidacaoController {
   }
 
   @PostMapping(value = "/validate-csv", consumes = "text/csv")
-  public RelatorioValidacao validarCsv(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao validarCsv(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarCsv("D-1011", corpo, "d1011.csv", cnpj(idEntidade), idEntidade);
   }
 
   @PostMapping(value = "/validate-xml", consumes = "application/xml")
-  public RelatorioValidacao validarXml(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao validarXml(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarXml("D-1011", corpo, "d1011.xml", cnpj(idEntidade), idEntidade);
   }
 
   @PostMapping(value = "/xml-to-csv", consumes = "application/xml")
-  public RelatorioValidacao xmlParaCsv(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
-    return validarXml(corpo, idEntidade);
+  public RelatorioValidacao xmlParaCsv(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    return validarXml(corpo, userId, idEntidade);
   }
 
   private String cnpj(Long idEntidade) {

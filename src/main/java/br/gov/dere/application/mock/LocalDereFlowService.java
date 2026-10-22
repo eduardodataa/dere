@@ -17,10 +17,13 @@ import br.gov.dere.persistence.DereTentativaTransmissaoEntity;
 import br.gov.dere.persistence.DereTentativaTransmissaoRepository;
 import br.gov.dere.persistence.DereAuditoriaValidacaoEntity;
 import br.gov.dere.persistence.DereAuditoriaValidacaoRepository;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class LocalDereFlowService {
@@ -46,6 +49,9 @@ public class LocalDereFlowService {
     try {
       String unsigned = generator.generate(document);
       var event = events.save(new DereEventEntity("D-1001", document.id(), "restricted-production", "nota_2026_001", unsigned));
+      event.ownedBy(userId, entityId);
+      event.source("d1001", null, true);
+      events.save(event);
       attempt = attempts.save(new DereTentativaTransmissaoEntity(event.getId(), "SUBMIT", 1, correlationId));
       var available = certificates.list(entityId);
       var loaded = available.isEmpty() ? null : certificates.loadForSigning(available.get(0).id());
@@ -59,7 +65,11 @@ public class LocalDereFlowService {
       String batchXml = new DereBatchBuilder().build(document.cnpjRoot(), List.of(signed));
       validate(batchXml, "envioLoteDere-v1_0_1.xsd");
       audits.save(new DereAuditoriaValidacaoEntity(userId, entityId, "SEND", "D-1001", true, "", batchXml, null));
-      var batch = batches.save(new DereBatchEntity(batchXml));
+      var batch = new DereBatchEntity(batchXml);
+      batch.ownedBy(userId, entityId);
+      batch = batches.save(batch);
+      event.attachBatch(batch.getId());
+      events.save(event);
       String protocol = "MOCK-" + UUID.randomUUID(); batch.received(protocol); batches.save(batch);
       attempt.complete("SUCCESS", 200, "MOCK_ACCEPTED", elapsed(started), "mock://submit/" + correlationId, "mock://protocol/" + protocol, null); attempts.save(attempt);
       return new FlowResult(batch.getId(), protocol, event.getEventIdentifier(), EventStatus.PROCESSING, batchXml);
@@ -73,9 +83,18 @@ public class LocalDereFlowService {
   @Transactional
   public FlowResult query(Long batchId) {
     var batch = batches.findById(batchId).orElseThrow();
-    batch.completed(EventStatus.ACCEPTED, "<retorno><protocolo>" + batch.getProtocol() + "</protocolo><situacao>ACEITO</situacao><recibo>REC-" + batch.getId() + "</recibo></retorno>"); batches.save(batch);
-    var event = events.findAll().stream().filter(item -> batch.getRequestXml().contains(item.getEventIdentifier())).findFirst().orElseThrow();
-    event.processed(EventStatus.ACCEPTED, "REC-" + batch.getId()); events.save(event);
+    var ligados = events.findByBatchId(batchId);
+    var event = ligados.stream().max(Comparator.comparing(DereEventEntity::getId)).orElseGet(() -> events.findAll().stream()
+        .filter(item -> item.getEventIdentifier() != null && batch.getRequestXml() != null && batch.getRequestXml().contains(item.getEventIdentifier()))
+        .findFirst()
+        .orElseThrow());
+    if (!event.isSimulated()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Consulta simulada não se aplica a lote real.");
+    }
+    batch.completed(EventStatus.ACCEPTED, "<retorno><protocolo>" + batch.getProtocol() + "</protocolo><situacao>ACEITO</situacao><recibo>REC-" + batch.getId() + "</recibo></retorno>");
+    batches.save(batch);
+    event.processed(EventStatus.ACCEPTED, "REC-" + batch.getId());
+    events.save(event);
     return new FlowResult(batch.getId(), batch.getProtocol(), event.getEventIdentifier(), EventStatus.ACCEPTED, batch.getRequestXml());
   }
 

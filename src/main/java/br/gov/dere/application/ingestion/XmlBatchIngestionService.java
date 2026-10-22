@@ -1,15 +1,12 @@
 package br.gov.dere.application.ingestion;
 
+import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import br.gov.dere.integration.xml.XmlSupport;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -20,8 +17,6 @@ import org.w3c.dom.Node;
 
 @Service
 public class XmlBatchIngestionService {
-    private static final int MAX_XML_BYTES = 10_000_000;
-    private static final long MAX_BATCH_BYTES = 100_000_000L;
     private static final Map<String, String> TYPES = Map.ofEntries(
         Map.entry("evtInfoContrib", "d1001"), Map.entry("evtPGCC", "d1011"),
         Map.entry("evtBalancete", "d1101"), Map.entry("evtAplicResTec", "d1106"),
@@ -31,36 +26,20 @@ public class XmlBatchIngestionService {
         Map.entry("evtRetornoMensal", "d9199"));
 
     private final JdbcTemplate jdbc;
-    public XmlBatchIngestionService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final ConfiguracaoIntegracaoService integracao;
+    public XmlBatchIngestionService(JdbcTemplate jdbc, ConfiguracaoIntegracaoService integracao) {
+        this.jdbc = jdbc;
+        this.integracao = integracao;
+    }
 
     public Summary ingest(MultipartFile file, Long userId, Long entityId) throws Exception {
-        if (file.isEmpty()) throw new IllegalArgumentException("Arquivo vazio");
-        String source = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xml");
-        List<NamedXml> documents = new ArrayList<>();
-        if (source.toLowerCase().endsWith(".zip")) {
-            long total = 0;
-            try (var zip = new ZipInputStream(new ByteArrayInputStream(file.getBytes()))) {
-                ZipEntry entry;
-                while ((entry = zip.getNextEntry()) != null) {
-                    String name = entry.getName();
-                    if (entry.isDirectory() || unsafeZipName(name) || !name.toLowerCase().endsWith(".xml")) continue;
-                    byte[] bytes = zip.readAllBytes();
-                    total += bytes.length;
-                    if (bytes.length > MAX_XML_BYTES || total > MAX_BATCH_BYTES)
-                        throw new IllegalArgumentException("Lote ZIP excede o limite permitido");
-                    documents.add(new NamedXml(name, new String(bytes, StandardCharsets.UTF_8)));
-                }
-            }
-        } else {
-            byte[] bytes = file.getBytes();
-            if (bytes.length > MAX_XML_BYTES) throw new IllegalArgumentException("XML excede 10 MB");
-            documents.add(new NamedXml(source, new String(bytes, StandardCharsets.UTF_8)));
-        }
+        var documents = LeitorXmlUpload.ler(file, integracao.current().limiteUploadMb() * 1024 * 1024);
         if (documents.isEmpty()) throw new IllegalArgumentException("Nenhum XML encontrado no arquivo");
+        String source = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xml");
         long totalBytes = documents.stream().mapToLong(x -> x.xml().getBytes(StandardCharsets.UTF_8).length).sum();
         long batchId = insertBatch(userId, entityId, source, documents.size(), totalBytes);
         int valid = 0, invalid = 0;
-        for (NamedXml document : documents) {
+        for (LeitorXmlUpload.Documento document : documents) {
             String type = null, message = "";
             boolean isValid = false;
             try {
@@ -102,13 +81,10 @@ public class XmlBatchIngestionService {
         return keys.getKey().longValue();
     }
 
-    private void insertDocument(String type, long batchId, Long userId, Long entityId, NamedXml doc, boolean valid, String message) {
-        jdbc.update("INSERT INTO dere_" + type + "_xml(upload_batch_id,user_id,entity_id,source_name,valid,validation_message,xml_content,created_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)", batchId, userId, entityId, doc.name(), valid, message, doc.xml());
+    private void insertDocument(String type, long batchId, Long userId, Long entityId, LeitorXmlUpload.Documento doc, boolean valid, String message) {
+        jdbc.update("INSERT INTO dere_" + type + "_xml(upload_batch_id,user_id,entity_id,source_name,valid,validation_message,xml_content,created_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)", batchId, userId, entityId, doc.nome(), valid, message, doc.xml());
     }
 
-    private static boolean unsafeZipName(String name) {
-        return name == null || name.startsWith("/") || name.startsWith("\\") || name.contains("..") || name.matches("^[A-Za-z]:.*");
-    }
     private String detect(String xml) { return TYPES.entrySet().stream().filter(e -> xml.contains(e.getKey())).map(Map.Entry::getValue).findFirst().orElse(null); }
 
     private String schema(String type) {
@@ -125,5 +101,4 @@ public class XmlBatchIngestionService {
         };
     }
     public record Summary(long batchId, String sourceName, int fileCount, int validCount, int invalidCount, long totalBytes) {}
-    private record NamedXml(String name, String xml) {}
 }

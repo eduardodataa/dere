@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.gov.dere.application.access.AccessService;
+import br.gov.dere.application.access.EmissorToken;
 import br.gov.dere.persistence.DereEntityEntity;
 import br.gov.dere.persistence.DereEntityRepository;
 import br.gov.dere.persistence.DereUserRepository;
@@ -19,6 +20,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
@@ -28,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 abstract class IntegrationTestSupport {
   @Autowired protected MockMvc mockMvc;
   @Autowired protected AccessService access;
+  @Autowired protected EmissorToken tokens;
   @Autowired protected DereUserRepository users;
   @Autowired protected DereEntityRepository entities;
 
@@ -63,6 +67,7 @@ abstract class IntegrationTestSupport {
         """.formatted(layout, origem, arquivo, toJsonString(conteudo));
     return mockMvc.perform(post("/api/transmissions/simulate")
         .contentType(MediaType.APPLICATION_JSON)
+        .with(sessao())
         .header("X-User-Id", masterId)
         .header("X-Entity-Id", entityId)
         .content(json));
@@ -93,6 +98,19 @@ abstract class IntegrationTestSupport {
     login("eduardo", "eduardo86")
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.userId").value(masterId))
-        .andExpect(jsonPath("$.master").value(true));
+        .andExpect(jsonPath("$.master").value(true))
+        .andExpect(jsonPath("$.token").isNotEmpty());
+  }
+
+  protected RequestPostProcessor sessao() {
+    var token = tokens.emitir(masterId);
+    return request -> {
+      request.addHeader("Authorization", "Bearer " + token);
+      return request;
+    };
+  }
+
+  protected ResultActions autenticado(AbstractMockHttpServletRequestBuilder<?> builder) throws Exception {
+    return mockMvc.perform(builder.with(sessao()));
   }
 }

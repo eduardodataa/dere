@@ -12,7 +12,7 @@ import org.springframework.http.MediaType;
 class LayoutD1101IntegrationTest extends IntegrationTestSupport {
   @Test
   void baixarModeloCsv() throws Exception {
-    mockMvc.perform(get("/api/layouts/D-1101/modelo.csv"))
+    autenticado(get("/api/layouts/D-1101/modelo.csv"))
         .andExpect(status().isOk())
         .andExpect(content().string(org.hamcrest.Matchers.containsString("id;")));
   }
@@ -20,7 +20,7 @@ class LayoutD1101IntegrationTest extends IntegrationTestSupport {
   @Test
   void validarCsv() throws Exception {
     var csv = withUniqueId(fixture("envio-ciclo/1101-incluir.csv"));
-    mockMvc.perform(post("/api/layouts/d1101/validate-csv")
+    autenticado(post("/api/layouts/d1101/validate-csv")
             .contentType(MediaType.parseMediaType("text/csv"))
             .header("X-Entity-Id", entityId)
             .content(csv))
@@ -31,7 +31,7 @@ class LayoutD1101IntegrationTest extends IntegrationTestSupport {
   @Test
   void validarXml() throws Exception {
     var xml = withUniqueId(fixture("envio-ciclo/1101-incluir.xml"));
-    mockMvc.perform(post("/api/layouts/d1101/validate-xml")
+    autenticado(post("/api/layouts/d1101/validate-xml")
             .contentType(MediaType.APPLICATION_XML)
             .header("X-Entity-Id", entityId)
             .content(xml))

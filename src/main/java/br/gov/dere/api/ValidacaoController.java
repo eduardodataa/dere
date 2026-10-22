@@ -21,12 +21,20 @@ public class ValidacaoController {
   }
 
   @PostMapping("/csv-to-xml")
-  public RelatorioValidacao csv(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao csv(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarCsv("D-1001", corpo, "d1001.csv", cnpj(idEntidade), idEntidade);
   }
 
   @PostMapping("/xml-to-csv")
-  public RelatorioValidacao xml(@RequestBody String corpo, @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+  public RelatorioValidacao xml(
+      @RequestBody String corpo,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader(value = "X-Entity-Id", required = false) Long idEntidade) {
+    acesso.exigirVinculo(userId, idEntidade);
     return validacao.validarXml("D-1001", corpo, "d1001.xml", cnpj(idEntidade), idEntidade);
   }
 

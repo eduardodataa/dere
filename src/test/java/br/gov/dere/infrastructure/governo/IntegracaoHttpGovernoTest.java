@@ -56,7 +56,7 @@ class IntegracaoHttpGovernoTest {
     tokenUrl = "http://127.0.0.1:" + port + "/token";
     settings = mock(ConfiguracaoIntegracaoService.class);
     when(settings.current()).thenReturn(new ConfiguracaoIntegracao(
-        true, false, baseUrl, tokenUrl, "client-it", "secret-it", true, "restricted-production", "nota_2026_001"));
+        true, false, baseUrl, tokenUrl, "client-it", "secret-it", true, "restricted-production", "nota_2026_001", 50));
     adapter = newAdapter(800);
   }
 

@@ -1,5 +1,6 @@
 package br.gov.dere.api;
 
+import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.transmissao.ApresentacaoErroTransmissao;
 import br.gov.dere.application.transmissao.FalhaTransmissaoException;
 import br.gov.dere.application.transmissao.ProtocoloPdf;
@@ -7,6 +8,7 @@ import br.gov.dere.application.transmissao.RequisicaoConsultaProtocolo;
 import br.gov.dere.application.transmissao.RequisicaoEnvioSimulado;
 import br.gov.dere.application.transmissao.TransmissaoSimuladaService;
 import br.gov.dere.application.transmissao.VisaoTransmissao;
+import br.gov.dere.persistence.DereEventRepository;
 import br.gov.dere.persistence.DereTentativaTransmissaoEntity;
 import br.gov.dere.persistence.DereTentativaTransmissaoRepository;
 import java.util.List;
@@ -30,10 +32,18 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/transmissions")
 public class TransmissaoController {
   private final DereTentativaTransmissaoRepository repository;
+  private final DereEventRepository events;
+  private final AccessService access;
   private final TransmissaoSimuladaService simulated;
 
-  public TransmissaoController(DereTentativaTransmissaoRepository repository, TransmissaoSimuladaService simulated) {
+  public TransmissaoController(
+      DereTentativaTransmissaoRepository repository,
+      DereEventRepository events,
+      AccessService access,
+      TransmissaoSimuladaService simulated) {
     this.repository = repository;
+    this.events = events;
+    this.access = access;
     this.simulated = simulated;
   }
 
@@ -108,7 +118,10 @@ public class TransmissaoController {
   }
 
   @GetMapping("/events/{eventId}/attempts")
-  public List<DereTentativaTransmissaoEntity> attempts(@PathVariable Long eventId) {
+  public List<DereTentativaTransmissaoEntity> attempts(@PathVariable Long eventId, @RequestHeader("X-User-Id") Long userId) {
+    var evento = events.findById(eventId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Evento não encontrado"));
+    if (evento.getEntityId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Evento sem vínculo com entidade");
+    access.assertAccess(userId, evento.getEntityId());
     return repository.findByEventIdOrderByAttemptAsc(eventId);
   }
 

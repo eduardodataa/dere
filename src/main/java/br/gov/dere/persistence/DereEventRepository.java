@@ -8,4 +8,5 @@ public interface DereEventRepository extends JpaRepository<DereEventEntity, Long
   Optional<DereEventEntity> findByEventIdentifier(String eventIdentifier);
   List<DereEventEntity> findByBatchId(Long batchId);
   List<DereEventEntity> findByEntityIdOrderByIdDesc(Long entityId);
+  List<DereEventEntity> findBySimulatedFalseAndReceiptNumberStartingWith(String prefix);
 }

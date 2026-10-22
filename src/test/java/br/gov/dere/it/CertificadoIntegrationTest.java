@@ -15,7 +15,7 @@ import org.springframework.mock.web.MockMultipartFile;
 class CertificadoIntegrationTest extends IntegrationTestSupport {
   @Test
   void listarArmazenarEExcluirCertificado() throws Exception {
-    mockMvc.perform(get("/api/certificates/entity/" + entityId).header("X-User-Id", masterId))
+    autenticado(get("/api/certificates/entity/" + entityId).header("X-User-Id", masterId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$").isArray());
 
@@ -23,7 +23,7 @@ class CertificadoIntegrationTest extends IntegrationTestSupport {
     CertificadoTesteLocal.create().store(bytes, "changeit".toCharArray());
     var file = new MockMultipartFile("file", "teste.p12", "application/x-pkcs12", bytes.toByteArray());
 
-    var criado = mockMvc.perform(multipart("/api/certificates/entity/" + entityId)
+    var criado = autenticado(multipart("/api/certificates/entity/" + entityId)
             .file(file)
             .file(new MockMultipartFile("label", "", "text/plain", "A1 IT".getBytes()))
             .file(new MockMultipartFile("password", "", "text/plain", "changeit".getBytes()))
@@ -33,7 +33,7 @@ class CertificadoIntegrationTest extends IntegrationTestSupport {
         .andReturn();
     Number id = JsonPath.read(criado.getResponse().getContentAsString(), "$.id");
 
-    mockMvc.perform(delete("/api/certificates/" + id)
+    autenticado(delete("/api/certificates/" + id)
             .header("X-User-Id", masterId)
             .header("X-Entity-Id", entityId))
         .andExpect(status().isOk());

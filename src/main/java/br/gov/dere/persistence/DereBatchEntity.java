@@ -102,4 +102,18 @@ public class DereBatchEntity {
     nextQueryAt = Instant.now().plusSeconds(delaySeconds);
     leaseUntil = null;
   }
+
+  public void resultadoDesconhecido() {
+    status = EventStatus.RESULTADO_DESCONHECIDO;
+    nextQueryAt = null;
+    leaseUntil = null;
+  }
+
+  public void aindaProcessando(String response) {
+    status = EventStatus.PROCESSING;
+    responseXml = response;
+    lastQueryAt = Instant.now();
+    nextQueryAt = Instant.now().plusSeconds(30);
+    leaseUntil = null;
+  }
 }

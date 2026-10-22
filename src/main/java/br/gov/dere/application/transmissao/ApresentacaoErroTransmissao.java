@@ -29,6 +29,27 @@ public final class ApresentacaoErroTransmissao {
     return rejeicao(http, correlacao, retorno, identificadorEvento);
   }
 
+  public static DiagnosticoTransmissao resultadoDesconhecido(ExcecaoTransmissaoGoverno ex, String identificadorEvento) {
+    var base = deGoverno(ex, identificadorEvento);
+    return new DiagnosticoTransmissao(
+        "COMUNICACAO",
+        "O resultado do envio ficou desconhecido",
+        "A Receita Federal pode ter recebido o lote, mas o protocolo não foi confirmado nesta tela.",
+        "Não reenvie este identificador. Concilie pelo protocolo, se a Receita o tiver emitido.",
+        base.codigo(),
+        base.descricaoOriginal(),
+        base.http(),
+        identificadorEvento,
+        base.protocolo(),
+        base.status(),
+        base.schema(),
+        base.ocorrencias(),
+        base.correlacao(),
+        false,
+        true,
+        base.httpAplicacao());
+  }
+
   public static DiagnosticoTransmissao deConsulta(String protocolo, ExcecaoTransmissaoGoverno ex) {
     var base = deGoverno(ex, null);
     var mensagem = ex.statusCode() == 404
