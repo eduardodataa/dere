@@ -323,6 +323,7 @@ function App() {
       await load();
     } catch (error) {
       if (!error.response) setMessage('Não foi possível entrar. Tente novamente.');
+      else if (error.response.status === 429) setMessage(error.response.data?.message || 'Muitas tentativas de login. Tente novamente em alguns minutos.');
       else setMessage('Usuário ou senha incorretos.');
     } finally {
       setEntrando(false);
