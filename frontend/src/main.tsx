@@ -382,7 +382,7 @@ function App() {
   const certificadoProps = { eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado };
   return <Box className="app-shell">
     <Drawer variant="permanent" className="sidebar">
-      <Box className="brand"><img className="marca" src={logotipoDataA} alt="maps + Data A" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box>
+      <Box className="brand"><img className="marca" src={logotipoDataA} alt="Sua logo" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box>
       <List>
         {secoes.map(secao => <Box key={secao.titulo || 'inicio'}>
           {secao.titulo ? <Typography className="menu-secao" component="span">{secao.titulo}</Typography> : null}
