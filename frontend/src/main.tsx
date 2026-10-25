@@ -555,6 +555,18 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     setMessage('');
   }
 
+  function aplicarSituacao(atualizadas) {
+    if (!Array.isArray(atualizadas) || !envio?.transmissao?.batchId) return;
+    const nova = atualizadas.find(item => item.batchId === envio.transmissao.batchId);
+    if (!nova) return;
+    const transmissao = { ...envio.transmissao };
+    Object.entries(nova).forEach(([chave, valor]) => {
+      if (valor != null && valor !== '') transmissao[chave] = valor;
+    });
+    setEnvio({ ...envio, transmissao });
+    setMessage(textoSituacaoEnvio(transmissao));
+  }
+
   function limparDados() {
     limparResultados();
     setFile(undefined);
@@ -677,7 +689,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
       </Stepper>
       {etapa === 0 ? passoArquivo : etapa === 1 ? passoValidacao : passoEnvio}
     </Stack></CardContent></Card>
-    <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} layout={currentLayout} reloadToken={listaEnvio} master={master} resumo onVerHistorico={() => onHistorico && onHistorico(currentLayout)} />
+    <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} layout={currentLayout} reloadToken={listaEnvio} master={master} resumo onVerHistorico={() => onHistorico && onHistorico(currentLayout)} onSituacaoAtualizada={aplicarSituacao} />
   </Stack>;
 }
 
@@ -877,8 +889,11 @@ function EnvioSimuladoCard({ envio, api, uid, eid }) {
   return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}>{motivoRetorno && <TransmissionErrorAlert erro={motivoRetorno} />}<Typography variant="subtitle1">{rotuloCanal(transmissao)}</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao?.protocol || '—'}`} /><Chip color={transmissao?.receiptNumber ? 'success' : 'warning'} label={transmissao?.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao?.status)} /></Stack><Typography color="text.secondary">Protocolo é a recepção do lote. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack spacing={0.5} alignItems="flex-start">{transmissao?.eventXml && <AcaoDownload rotulo="XML do evento" texto="XML do evento enviado à Receita, sem a assinatura digital." onClick={() => baixar(`${transmissao.layout || 'evento'}.xml`, transmissao.eventXml)} />}{transmissao?.batchXml && <AcaoDownload rotulo="XML do lote" texto="XML do lote enviado à Receita, com o evento assinado." onClick={() => baixar('lote.xml', transmissao.batchXml)} />}{transmissao?.returnXml && <AcaoDownload rotulo="XML de retorno" texto="XML de retorno da Receita, da recepção ou da consulta do lote." onClick={() => baixar('retorno.xml', transmissao.returnXml)} />}{transmissao?.csv && <AcaoDownload rotulo="CSV" texto="CSV de origem usado na geração ou conversão do evento." onClick={() => baixar(`${transmissao.layout || 'evento'}.csv`, transmissao.csv)} />}{transmissao?.batchId && <AcaoDownload rotulo="PDF do protocolo" texto="PDF com os dados do protocolo em tabela." onClick={baixarPdf} destaque />}</Stack></Stack></Paper>;
 }
 
-function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, master, resumo, onVerHistorico, entidadeNome, filtroInicial }) {
+function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, master, resumo, onVerHistorico, onSituacaoAtualizada, entidadeNome, filtroInicial }) {
   const [linhas, setLinhas] = useState([]);
+  const [atualizandoSituacao, setAtualizandoSituacao] = useState(false);
+  const [segundosBloqueio, setSegundosBloqueio] = useState(0);
+  const bloqueioAte = useRef(0);
   const [detalhe, setDetalhe] = useState();
   const [tentativas, setTentativas] = useState([]);
   const [de, setDe] = useState('');
@@ -897,6 +912,34 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
     const base = layout ? todas.filter(item => item.layout === layout) : todas;
     setLinhas(base);
     linhasRef.current = base;
+    return base;
+  }
+  useEffect(() => {
+    if (segundosBloqueio <= 0) return undefined;
+    const timer = setTimeout(() => setSegundosBloqueio(Math.max(0, Math.ceil((bloqueioAte.current - Date.now()) / 1000))), 1000);
+    return () => clearTimeout(timer);
+  }, [segundosBloqueio]);
+  async function atualizarSituacao() {
+    if (atualizandoSituacao || Date.now() < bloqueioAte.current) return;
+    bloqueioAte.current = Date.now() + 10000;
+    setSegundosBloqueio(10);
+    setAtualizandoSituacao(true);
+    try {
+      const pendentes = linhasRef.current.filter(item => item.batchId && !item.receiptNumber && grupoSituacao(item.status) === 'processando');
+      const consultadas = [];
+      for (const linha of pendentes) {
+        try {
+          const response = await api.post(`/api/transmissions/${linha.batchId}/query`, {}, { headers: cabecalhos });
+          if (response.data) consultadas.push(response.data);
+        } catch {}
+      }
+      const base = await carregar();
+      if (onSituacaoAtualizada) onSituacaoAtualizada(consultadas.length ? consultadas : base);
+    } catch {
+      setMessage('Falha ao atualizar a situação');
+    } finally {
+      setAtualizandoSituacao(false);
+    }
   }
   useEffect(() => { if (uid && eid) carregar().catch(() => setMessage('Falha ao carregar envios')); }, [uid, eid, layout, reloadToken]);
   useEffect(() => {
@@ -965,7 +1008,10 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
   return <Card><CardContent><Stack spacing={2}>
     <Stack direction="row" justifyContent="space-between" alignItems="center">
       <Typography variant="h6">{resumo ? 'Últimos envios deste leiaute' : 'Histórico de envios'}</Typography>
-      {resumo && onVerHistorico ? <Button onClick={onVerHistorico}>Ver histórico completo</Button> : null}
+      <Stack direction="row" spacing={1} alignItems="center">
+        {resumo ? <Button variant="outlined" disabled={atualizandoSituacao || segundosBloqueio > 0} onClick={atualizarSituacao}>{atualizandoSituacao ? 'Atualizando…' : segundosBloqueio > 0 ? `Aguarde ${segundosBloqueio}s` : 'Atualizar situação'}</Button> : null}
+        {resumo && onVerHistorico ? <Button onClick={onVerHistorico}>Ver histórico completo</Button> : null}
+      </Stack>
     </Stack>
     {!resumo && <Typography color="text.secondary">A situação mostra o retorno da Receita. Protocolo é a recepção do lote. Aceita é o processamento concluído com recibo.</Typography>}
     {!resumo && <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
