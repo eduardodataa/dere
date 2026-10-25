@@ -1,15 +1,22 @@
 package br.gov.dere.api;
 
 import br.gov.dere.application.access.AccessService;
+import br.gov.dere.persistence.DereEntidadeLogoEntity;
+import br.gov.dere.persistence.DereEntidadeLogoRepository;
 import br.gov.dere.persistence.DereEntityEntity;
 import br.gov.dere.persistence.DereEntityRepository;
 import br.gov.dere.persistence.DereUserEntity;
 import br.gov.dere.persistence.DereUserRepository;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,14 +32,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/admin")
 public class AdministrationController {
+  private static final int LOGO_MAXIMO = 1024 * 1024;
   private final AccessService access;
   private final DereUserRepository users;
   private final DereEntityRepository entities;
+  private final DereEntidadeLogoRepository logos;
 
-  public AdministrationController(AccessService access, DereUserRepository users, DereEntityRepository entities) {
+  public AdministrationController(AccessService access, DereUserRepository users, DereEntityRepository entities, DereEntidadeLogoRepository logos) {
     this.access = access;
     this.users = users;
     this.entities = entities;
+    this.logos = logos;
   }
 
   @PostMapping("/users")
@@ -79,6 +89,7 @@ public class AdministrationController {
     var raiz = raizCnpj(request.cnpjRoot());
     requireEntity(raiz, request.legalName());
     var entity = entities.save(new DereEntityEntity(raiz, request.legalName().trim()));
+    aplicarLogo(entity.getId(), request);
     return toDto(entity, link(entity, request.userIds()));
   }
 
@@ -90,7 +101,15 @@ public class AdministrationController {
       var allowed = actor.getEntities().stream().map(DereEntityEntity::getId).toList();
       visible = visible.filter(entity -> allowed.contains(entity.getId()));
     }
-    return visible.sorted(Comparator.comparing(DereEntityEntity::getLegalName)).map(entity -> toDto(entity, userIds(entity))).toList();
+    var comLogo = Set.copyOf(logos.identificadores());
+    return visible.sorted(Comparator.comparing(DereEntityEntity::getLegalName)).map(entity -> toDto(entity, userIds(entity), comLogo.contains(entity.getId()))).toList();
+  }
+
+  @GetMapping("/entities/{id}/logo")
+  public ResponseEntity<byte[]> logo(@RequestHeader("X-User-Id") Long actorId, @PathVariable Long id) {
+    access.assertAccess(actorId, id);
+    var logo = logos.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Entidade sem logo"));
+    return ResponseEntity.ok().contentType(MediaType.parseMediaType(logo.getTipo())).cacheControl(CacheControl.noCache()).body(logo.getConteudo());
   }
 
   @PutMapping("/entities/{id}")
@@ -102,6 +121,7 @@ public class AdministrationController {
     var entity = entities.findById(id).orElseThrow();
     entity.update(raiz, request.legalName().trim());
     entities.save(entity);
+    aplicarLogo(entity.getId(), request);
     return toDto(entity, link(entity, request.userIds()));
   }
 
@@ -114,7 +134,37 @@ public class AdministrationController {
       user.getEntities().removeIf(item -> item.getId().equals(entity.getId()));
       users.saveAndFlush(user);
     }
+    logos.deleteById(entity.getId());
     entities.delete(entity);
+  }
+
+  private void aplicarLogo(Long entityId, EntityRequest request) {
+    var base64 = request.logoBase64() == null ? "" : request.logoBase64().trim();
+    var virgula = base64.indexOf(',');
+    if (base64.startsWith("data:") && virgula >= 0) base64 = base64.substring(virgula + 1);
+    if (!base64.isBlank()) {
+      byte[] bytes;
+      try {
+        bytes = Base64.getDecoder().decode(base64);
+      } catch (IllegalArgumentException ex) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A logo enviada não é uma imagem válida.");
+      }
+      if (bytes.length > LOGO_MAXIMO) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A logo deve ter no máximo 1 MB.");
+      var tipo = tipoDaImagem(bytes);
+      var logo = logos.findById(entityId).orElseGet(() -> new DereEntidadeLogoEntity(entityId));
+      logo.definir(tipo, bytes);
+      logos.save(logo);
+      return;
+    }
+    if (Boolean.TRUE.equals(request.removerLogo())) logos.deleteById(entityId);
+  }
+
+  private static String tipoDaImagem(byte[] bytes) {
+    if (bytes.length >= 8 && bytes[0] == (byte) 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return "image/png";
+    if (bytes.length >= 3 && bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xD8 && bytes[2] == (byte) 0xFF) return "image/jpeg";
+    if (bytes.length >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == '8') return "image/gif";
+    if (bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') return "image/webp";
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use uma logo PNG, JPEG, WEBP ou GIF.");
   }
 
   private List<Long> link(DereEntityEntity entity, List<Long> userIds) {
@@ -158,7 +208,11 @@ public class AdministrationController {
   }
 
   private EntityDto toDto(DereEntityEntity entity, List<Long> userIds) {
-    return new EntityDto(entity.getId(), entity.getCnpjRoot(), entity.getLegalName(), userIds);
+    return toDto(entity, userIds, logos.existsById(entity.getId()));
+  }
+
+  private EntityDto toDto(DereEntityEntity entity, List<Long> userIds, boolean temLogo) {
+    return new EntityDto(entity.getId(), entity.getCnpjRoot(), entity.getLegalName(), userIds, temLogo);
   }
 
   private static List<Long> userIds(DereEntityEntity entity) {
@@ -166,7 +220,7 @@ public class AdministrationController {
   }
 
   public record UserRequest(String login, String password, String name, Boolean master) {}
-  public record EntityRequest(String cnpjRoot, String legalName, List<Long> userIds) {}
+  public record EntityRequest(String cnpjRoot, String legalName, List<Long> userIds, String logoBase64, String logoTipo, Boolean removerLogo) {}
   public record UserDto(Long id, String login, String name, boolean master) {}
-  public record EntityDto(Long id, String cnpjRoot, String legalName, List<Long> userIds) {}
+  public record EntityDto(Long id, String cnpjRoot, String legalName, List<Long> userIds, boolean temLogo) {}
 }

@@ -12,7 +12,7 @@ body{margin:0;font-family:Inter,system-ui,sans-serif}
 .sidebar .Mui-selected,.sidebar .Mui-selected:hover{background-color:#2563eb !important;color:#fff !important}
 [data-mui-color-scheme="dark"] .sidebar .Mui-selected,[data-mui-color-scheme="dark"] .sidebar .Mui-selected:hover{background-color:#60A5FA !important;color:#0F172A !important}
 .brand{padding:28px 24px 20px}
-.brand .marca{display:block;width:100%;height:auto;margin:0 0 16px;border-radius:6px}
+.brand .marca{display:block;width:100%;height:72px;object-fit:contain;object-position:left center;background:#fff;margin:0 0 16px;border-radius:6px}
 .brand .MuiTypography-caption{color:#9ca3af}
 .content{margin-left:240px;padding:40px;min-height:100vh}
 .error-list{max-height:260px;overflow:auto;background:color-mix(in srgb,var(--mui-palette-error-main,#D32F2F) 12%,transparent);padding:8px;border-radius:8px}

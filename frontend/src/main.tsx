@@ -254,6 +254,25 @@ function PainelCertificado({ eid, entities, setEid, entidadeTravada, certificado
   </Stack></CardContent></Card>;
 }
 
+function MarcaEntidade({ api, entidade, versao }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!entidade?.id || !entidade.temLogo) { setUrl(''); return undefined; }
+    let cancelado = false;
+    let objeto = '';
+    api.get(`/api/admin/entities/${entidade.id}/logo`, { responseType: 'blob' }).then(response => {
+      if (cancelado) return;
+      objeto = URL.createObjectURL(response.data);
+      setUrl(objeto);
+    }).catch(() => { if (!cancelado) setUrl(''); });
+    return () => {
+      cancelado = true;
+      if (objeto) URL.revokeObjectURL(objeto);
+    };
+  }, [entidade?.id, entidade?.temLogo, versao]);
+  return <img className="marca" src={url || logotipoDataA} alt={url ? (entidade?.legalName || 'Logo da entidade') : 'Sua logo'} />;
+}
+
 function BotaoTema() {
   const esquema = useColorScheme();
   const modo = esquema.mode === 'dark' ? 'dark' : 'light';
@@ -273,6 +292,7 @@ function App() {
   const [canal, setCanal] = useState(ambienteDaUrl);
   const [filtroHistorico, setFiltroHistorico] = useState({ layout: '', situacao: '' });
   const [entities, setEntities] = useState<any[]>([]);
+  const [marcaVersao, setMarcaVersao] = useState(0);
   const [eid, setEid] = useState(1);
   const [message, setMessage] = useState('');
   const [certificados, setCertificados] = useState<any[]>([]);
@@ -286,10 +306,11 @@ function App() {
       const response = await api.get('/api/admin/entities');
       const list = Array.isArray(response.data) ? response.data : [];
       setEntities(list);
+      setMarcaVersao(atual => atual + 1);
       if (list[0]) setEid(current => list.some(entity => entity.id === current) ? current : list[0].id);
     } catch { setMessage('Falha ao carregar entidades'); }
   };
-  useEffect(() => { if (!uid) return; api.get('/api/admin/entities').then(response => setEntities(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, [uid]);
+  useEffect(() => { if (!uid) return; api.get('/api/admin/entities').then(response => { setEntities(Array.isArray(response.data) ? response.data : []); setMarcaVersao(atual => atual + 1); }).catch(() => {}); }, [uid]);
   useEffect(() => { if (uid && eid) api.get(`/api/certificates/entity/${eid}`).then(response => setCertificados(Array.isArray(response.data) ? response.data : [])).catch(() => {}); }, [uid, eid]);
   useEffect(() => { if (message) window.scrollTo({ top: 0, behavior: 'smooth' }); }, [message]);
   useEffect(() => {
@@ -382,7 +403,7 @@ function App() {
   const certificadoProps = { eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado };
   return <Box className="app-shell">
     <Drawer variant="permanent" className="sidebar">
-      <Box className="brand"><img className="marca" src={logotipoDataA} alt="Sua logo" /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box>
+      <Box className="brand"><MarcaEntidade api={api} entidade={currentEntity} versao={marcaVersao} /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box>
       <List>
         {secoes.map(secao => <Box key={secao.titulo || 'inicio'}>
           {secao.titulo ? <Typography className="menu-secao" component="span">{secao.titulo}</Typography> : null}
@@ -1122,6 +1143,36 @@ function UserAdmin({ api, currentUserId, onSelfMaster, setMessage }) {
   async function removeUser(user) { await api.delete(`/api/admin/users/${user.id}`); if (form.id === user.id) setForm(empty); await load(); setMessage('Usuário excluído'); }
   return <Card><CardContent><Stack spacing={2}><Typography variant="h6">{form.id ? `Editar ${form.login}` : 'Novo usuário'}</Typography><Stack direction="row" spacing={2} alignItems="center"><TextField label="Login" value={form.login} onChange={event => setForm({ ...form, login: event.target.value })} /><TextField label="Nome" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /><TextField label={form.id ? 'Nova senha' : 'Senha'} type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} helperText={form.id ? 'Em branco mantém a senha' : ' '} /><Button variant={form.master ? 'contained' : 'outlined'} onClick={() => setForm({ ...form, master: !form.master })}>{form.master ? 'Master' : 'Comum'}</Button><Button variant="contained" onClick={saveUser}>{form.id ? 'Salvar' : 'Cadastrar'}</Button>{form.id && <Button onClick={() => setForm(empty)}>Cancelar</Button>}</Stack><Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}><Box component="thead"><Box component="tr">{['Login', 'Nome', 'Master', 'Ações'].map(title => <Box component="th" key={title} sx={{ textAlign: 'left', py: 1 }}>{title}</Box>)}</Box></Box><Box component="tbody">{rows.map(user => <Box component="tr" key={user.id} sx={{ borderTop: 1, borderColor: 'divider' }}><Box component="td" sx={{ py: 1 }}>{user.login}</Box><Box component="td">{user.name}</Box><Box component="td"><Button size="small" variant={user.master ? 'contained' : 'outlined'} onClick={() => saveMaster(user, !user.master)}>{user.master ? 'Master' : 'Comum'}</Button></Box><Box component="td"><Button size="small" onClick={() => setForm({ id: user.id, login: user.login, name: user.name, password: '', master: user.master })}>Editar</Button><Button size="small" color="error" disabled={user.id === currentUserId} onClick={() => removeUser(user)}>Excluir</Button></Box></Box>)}</Box></Box></Stack></CardContent></Card>;
 }
+function lerBase64(arquivo) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const texto = String(leitor.result || '');
+      const indice = texto.indexOf(',');
+      resolve(indice >= 0 ? texto.slice(indice + 1) : texto);
+    };
+    leitor.onerror = () => reject(leitor.error);
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+function LogoAtual({ api, entityId }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!entityId) return undefined;
+    let cancelado = false;
+    let objeto = '';
+    api.get(`/api/admin/entities/${entityId}/logo`, { responseType: 'blob' }).then(response => {
+      if (cancelado) return;
+      objeto = URL.createObjectURL(response.data);
+      setUrl(objeto);
+    }).catch(() => {});
+    return () => { cancelado = true; if (objeto) URL.revokeObjectURL(objeto); };
+  }, [entityId]);
+  if (!url) return null;
+  return <Box component="img" src={url} alt="Logo cadastrada" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} />;
+}
+
 function EntityAdmin({ api, onChanged, setMessage, master }) {
   const [users, setUsers] = useState([]);
   const [entities, setEntities] = useState([]);
@@ -1140,13 +1191,25 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
     }
   };
   useEffect(() => { load().catch(() => setMessage('Falha ao carregar entidades')); }, []);
-  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [] }); }
-  function openEdit(entity) { setForm({ id: entity.id, cnpjRoot: entity.cnpjRoot, legalName: entity.legalName, userIds: entity.userIds || [] }); }
+  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [], temLogo: false, logoArquivo: null, removerLogo: false, previa: '' }); }
+  function openEdit(entity) { setForm({ id: entity.id, cnpjRoot: entity.cnpjRoot, legalName: entity.legalName, userIds: entity.userIds || [], temLogo: !!entity.temLogo, logoArquivo: null, removerLogo: false, previa: '' }); }
+  function escolherLogo(event) {
+    const arquivo = event.target.files?.[0];
+    event.target.value = '';
+    if (!arquivo) return;
+    if (arquivo.size > 1024 * 1024) { setMessage('A logo deve ter no máximo 1 MB.'); return; }
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(arquivo.type)) { setMessage('Use uma logo PNG, JPEG, WEBP ou GIF.'); return; }
+    setForm({ ...form, logoArquivo: arquivo, removerLogo: false, previa: URL.createObjectURL(arquivo) });
+  }
   async function save() {
     const cnpjRoot = raizCnpj(form.cnpjRoot);
     if (!cnpjRoot) { setMessage('Informe o CNPJ raiz com 8 dígitos (ou o CNPJ completo).'); return; }
     try {
-      const body = { cnpjRoot, legalName: form.legalName, userIds: form.userIds };
+      const body = { cnpjRoot, legalName: form.legalName, userIds: form.userIds, removerLogo: !!form.removerLogo && !form.logoArquivo };
+      if (form.logoArquivo) {
+        body.logoBase64 = await lerBase64(form.logoArquivo);
+        body.logoTipo = form.logoArquivo.type;
+      }
       if (form.id) await api.put(`/api/admin/entities/${form.id}`, body);
       else await api.post('/api/admin/entities', body);
       setForm(null);
@@ -1168,7 +1231,7 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
     }
   }
   if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s)</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
-  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
+  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Stack spacing={1}><Typography color="text.secondary">Logo da entidade. PNG, JPEG, WEBP ou GIF, até 1 MB. Quando cadastrada, substitui a logo padrão do menu.</Typography><Stack direction="row" spacing={2} alignItems="center"><Button component="label" variant="outlined">Selecionar logo<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={escolherLogo} /></Button>{(form.logoArquivo || (form.temLogo && !form.removerLogo)) && <Button color="error" onClick={() => setForm({ ...form, logoArquivo: null, removerLogo: true, previa: '' })}>Remover logo</Button>}</Stack>{form.logoArquivo ? <Typography variant="body2" color="text.secondary">{form.logoArquivo.name}</Typography> : null}{form.previa ? <Box component="img" src={form.previa} alt="Prévia da logo" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} /> : null}{form.temLogo && !form.logoArquivo && !form.removerLogo && !form.previa ? <LogoAtual api={api} entityId={form.id} /> : null}</Stack>}{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
 }
 function UserPickList({ users, selectedIds, onChange }) {
   const [availableMarked, setAvailableMarked] = useState([]);
