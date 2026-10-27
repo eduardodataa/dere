@@ -5,9 +5,15 @@ public record SituacaoReceita(
     boolean envioLiberado,
     String mensagem,
     String proximaAcao,
-    int segundosProximaConsulta) {
+    int segundosProximaConsulta,
+    String aviso,
+    DetalheSituacaoReceita detalhe) {
 
   public SituacaoReceita comSegundos(int segundos) {
-    return new SituacaoReceita(codigo, envioLiberado, mensagem, proximaAcao, segundos);
+    return new SituacaoReceita(codigo, envioLiberado, mensagem, proximaAcao, segundos, aviso, detalhe);
+  }
+
+  public SituacaoReceita comDetalhe(DetalheSituacaoReceita novo) {
+    return new SituacaoReceita(codigo, envioLiberado, mensagem, proximaAcao, segundosProximaConsulta, aviso, novo);
   }
 }

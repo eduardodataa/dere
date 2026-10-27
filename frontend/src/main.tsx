@@ -432,14 +432,53 @@ function formatarRelogio(total) {
   return `${String(minutos).padStart(2, '0')}:${String(resto).padStart(2, '0')}`;
 }
 
+const AVISO_SISTEMA_FORA = 'Enquanto o sistema da DeRE estiver fora, a declaração pode ser incluída e validada neste sistema. O lote não será aceito pela Receita Federal.';
+
 function situacaoReceitaIndisponivel() {
   return {
     codigo: 'COMUNICACAO',
     envioLiberado: false,
     mensagem: 'Não foi possível consultar a situação da Receita Federal.',
+    aviso: AVISO_SISTEMA_FORA,
     proximaAcao: 'A consulta será repetida. O envio não será repetido sozinho.',
-    segundosProximaConsulta: 60
+    segundosProximaConsulta: 60,
+    detalhe: {
+      consultaRealizada: false,
+      operacao: 'A consulta ao servidor deste sistema falhou antes de falar com a Receita.',
+      verificadoEm: new Date().toISOString()
+    }
   };
+}
+
+function formatarInstante(valor) {
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return valor || '—';
+  return data.toLocaleString('pt-BR');
+}
+
+function avisoSituacao(situacao) {
+  if (situacao?.aviso) return situacao.aviso;
+  if (situacao?.codigo === 'TOKEN' || situacao?.codigo === 'COMUNICACAO') return AVISO_SISTEMA_FORA;
+  return '';
+}
+
+function linhasDetalheSituacao(situacao) {
+  const detalhe = situacao?.detalhe || {};
+  const consultou = detalhe.consultaRealizada === true;
+  const recepcao = detalhe.enderecoRecepcao
+    ? (consultou ? `${detalhe.enderecoRecepcao} (não consultado nesta verificação)` : detalhe.enderecoRecepcao)
+    : '—';
+  const http = detalhe.httpStatus == null ? (consultou ? 'Sem resposta HTTP' : '—') : String(detalhe.httpStatus);
+  return [
+    [consultou ? 'Endereço verificado' : 'Endereço configurado', detalhe.enderecoVerificado || '—'],
+    ['Recepção dos lotes', recepcao],
+    ['Ambiente', detalhe.ambiente || '—'],
+    ['Operação', detalhe.operacao || '—'],
+    ['HTTP', http],
+    ['Resposta', detalhe.resposta || '—'],
+    ['Verificado em', detalhe.verificadoEm ? formatarInstante(detalhe.verificadoEm) : '—'],
+    ['Código', situacao?.codigo || '—']
+  ];
 }
 
 function complementoErroReceita(erro, situacao, segundos) {
@@ -450,10 +489,24 @@ function complementoErroReceita(erro, situacao, segundos) {
 }
 
 function PainelSituacaoReceita({ situacao, segundos }) {
+  const [aberto, setAberto] = useState(false);
   if (!situacao) return <Alert severity="info">Consultando a Receita Federal antes do envio…</Alert>;
   const severidade = situacao.codigo === 'DISPONIVEL' ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
   const relogio = segundos > 0 ? ` Próxima consulta em ${formatarRelogio(segundos)}.` : '';
-  return <Alert severity={severidade}><AlertTitle>Situação da Receita Federal</AlertTitle><Typography>{situacao.mensagem}</Typography>{situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}</Alert>;
+  const aviso = avisoSituacao(situacao);
+  const linhas = linhasDetalheSituacao(situacao);
+  return <Alert severity={severidade} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+    <AlertTitle>Situação da Receita Federal</AlertTitle>
+    <Typography>{situacao.mensagem}</Typography>
+    {aviso ? <Typography variant="body2" sx={{ mt: 0.5 }}>{aviso}</Typography> : null}
+    {situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}
+    <Button color="inherit" size="small" onClick={() => setAberto(valor => !valor)} sx={{ mt: 1, px: 0 }}>{aberto ? 'Ocultar detalhes' : 'Exibir mais detalhes'}</Button>
+    <Collapse in={aberto}>
+      <Stack spacing={0.5} sx={{ mt: 1.5, borderTop: 1, borderColor: 'divider', pt: 1.5 }}>
+        {linhas.map(([rotulo, valor]) => <Typography key={rotulo} variant="body2">{rotulo}: {valor}</Typography>)}
+      </Stack>
+    </Collapse>
+  </Alert>;
 }
 
 function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, onHistorico }) {

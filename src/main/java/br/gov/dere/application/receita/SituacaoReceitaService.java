@@ -19,19 +19,25 @@ public class SituacaoReceitaService {
   }
 
   public synchronized SituacaoReceita atual() {
-    if (!settings.current().realAdapterEnabled()) return ClassificacaoSituacaoReceita.simulado();
+    var cfg = settings.current();
+    if (!cfg.realAdapterEnabled()) {
+      return ClassificacaoSituacaoReceita.simulado().comDetalhe(MontagemDetalheSituacao.simulado(cfg, Instant.now()));
+    }
     var agora = Instant.now();
     if (cache != null && expira.isAfter(agora)) {
       var restante = (int) Math.max(1, Duration.between(agora, expira).toSeconds());
       return cache.comSegundos(restante);
     }
     SituacaoReceita situacao;
+    Throwable falha = null;
     try {
       auth.renovar();
       situacao = ClassificacaoSituacaoReceita.disponivel();
     } catch (RuntimeException ex) {
+      falha = ex;
       situacao = ClassificacaoSituacaoReceita.falha(texto(ex));
     }
+    situacao = situacao.comDetalhe(MontagemDetalheSituacao.consultado(cfg, agora, falha));
     cache = situacao;
     expira = agora.plusSeconds(Math.max(1, situacao.segundosProximaConsulta()));
     return situacao;
