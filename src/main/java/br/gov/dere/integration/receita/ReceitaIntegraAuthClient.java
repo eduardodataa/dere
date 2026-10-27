@@ -1,5 +1,6 @@
 package br.gov.dere.integration.receita;
 
+import br.gov.dere.application.configuracao.ConfiguracaoIntegracao;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -20,13 +21,26 @@ public class ReceitaIntegraAuthClient {
 
   public synchronized String token() {
     var atual = settings.current();
-    if (atual.clientId() == null || atual.clientId().isBlank() || atual.clientSecret() == null || atual.clientSecret().isBlank()) {
-      throw new IllegalStateException("Credenciais Receita Integra não configuradas");
-    }
-    var chave = atual.tokenUrl() + "|" + atual.clientId();
+    exigirCredencial(atual);
+    var chave = chave(atual);
     if (cached != null && chave.equals(cacheKey) && cached.expiresAt().isAfter(Instant.now().plusSeconds(30))) {
       return cached.value();
     }
+    return guardar(atual, chave);
+  }
+
+  public synchronized String renovar() {
+    var atual = settings.current();
+    exigirCredencial(atual);
+    return guardar(atual, chave(atual));
+  }
+
+  public synchronized void invalidate() {
+    cached = null;
+    cacheKey = null;
+  }
+
+  private String guardar(ConfiguracaoIntegracao atual, String chave) {
     var basic = Base64.getEncoder().encodeToString((atual.clientId() + ":" + atual.clientSecret()).getBytes(StandardCharsets.UTF_8));
     var resposta = client.post()
         .uri(atual.tokenUrl())
@@ -43,9 +57,14 @@ public class ReceitaIntegraAuthClient {
     return cached.value();
   }
 
-  public synchronized void invalidate() {
-    cached = null;
-    cacheKey = null;
+  private static void exigirCredencial(ConfiguracaoIntegracao atual) {
+    if (atual.clientId() == null || atual.clientId().isBlank() || atual.clientSecret() == null || atual.clientSecret().isBlank()) {
+      throw new IllegalStateException("Credenciais Receita Integra não configuradas");
+    }
+  }
+
+  private static String chave(ConfiguracaoIntegracao atual) {
+    return atual.tokenUrl() + "|" + atual.clientId();
   }
 
   public record Token(String value, Instant expiresAt) {}

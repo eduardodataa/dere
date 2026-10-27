@@ -68,6 +68,19 @@ class ApresentacaoErroTransmissaoTest {
   }
 
   @Test
+  void tokenNaoEntregueExplicaQueOLoteNaoFoiEnviado() {
+    var diagnostico = ApresentacaoErroTransmissao.deFalhaLocal(
+        new IllegalStateException("500 Internal Server Error: {\"error\":\"timeout\",\"message\":\"Erro ao gerar token\"}"),
+        "DeRE10011000000016149042028101519000000017");
+    assertEquals("AUTENTICACAO", diagnostico.categoria());
+    assertEquals("A Receita não entregou o token de acesso", diagnostico.titulo());
+    assertTrue(diagnostico.mensagem().contains("não foi enviado"));
+    assertFalse(diagnostico.repetir());
+    assertTrue(diagnostico.inconclusivo());
+    assertEquals("DeRE10011000000016149042028101519000000017", diagnostico.identificador());
+  }
+
+  @Test
   void duplicidadeLocalNaoAutorizaReenvio() {
     var diagnostico = ApresentacaoErroTransmissao.deFalhaLocal(new IllegalStateException("Duplicate entry uk_transmission_attempt"), "EVT-1");
     assertTrue(diagnostico.inconclusivo());

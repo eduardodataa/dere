@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, AlertTitle, Button, Collapse, Stack, Typography } from '@mui/material';
 import { apresentarErroTransmissao, tokensAlertaTransmissao } from './erroTransmissao';
 
-export function TransmissionErrorAlert({ erro, aoRepetir, repetindo }) {
+export function TransmissionErrorAlert({ erro, aoRepetir, repetindo, complemento }) {
   const [aberto, setAberto] = useState(false);
   const [copiado, setCopiado] = useState(false);
   if (!erro) return null;
@@ -20,6 +20,7 @@ export function TransmissionErrorAlert({ erro, aoRepetir, repetindo }) {
     <Typography color={tokensAlertaTransmissao.texto}>{view.mensagem}</Typography>
     {view.codigo ? <Typography variant="body2" sx={{ mt: 1 }}>Código: {view.codigo}</Typography> : null}
     <Typography variant="body2" color={tokensAlertaTransmissao.apoio} sx={{ mt: 1 }}>{view.orientacao}</Typography>
+    {complemento ? <Typography variant="body2" color={tokensAlertaTransmissao.apoio} sx={{ mt: 1 }}>{complemento}</Typography> : null}
     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.5 }}>
       <Button color="inherit" size="small" onClick={() => setAberto(valor => !valor)}>{aberto ? 'Ocultar detalhes técnicos' : 'Detalhes técnicos'}</Button>
       <Button color="inherit" size="small" onClick={copiar}>{copiado ? 'Diagnóstico copiado' : 'Copiar diagnóstico'}</Button>

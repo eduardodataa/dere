@@ -89,6 +89,12 @@ public final class ApresentacaoErroTransmissao {
           "Não envie a declaração outra vez até confirmar o protocolo. Informe a correlação ao suporte.",
           null, "Falha ao gravar a tentativa local.", null, identificadorEvento, null, null, null, List.of(), correlacao, false, true, 504);
     }
+    if (contem(texto, "erro ao gerar token", "não retornou access_token", "nao retornou access_token")) {
+      return montar("AUTENTICACAO", "A Receita não entregou o token de acesso",
+          "O lote não foi enviado. A falha ocorreu ao pedir a autorização, antes da transmissão do XML.",
+          "A situação da Receita será consultada de novo no painel. O envio não será repetido sozinho. Quando o token voltar, use outro identificador: este ficou registrado como resultado indefinido.",
+          null, resumir(texto), null, identificadorEvento, null, null, null, List.of(), correlacao, false, true, 502);
+    }
     if (contem(texto, "crítica", "critica", "leiaute", "id do evento", "cnpj")) {
       return montar("VALIDACAO_LOCAL", "A declaração não passou na validação local",
           "O arquivo precisa ser corrigido antes do envio.",

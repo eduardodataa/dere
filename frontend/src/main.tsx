@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Drawer, FormControlLabel, Grid, IconButton, InputAdornment, LinearProgress, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Paper, Radio, RadioGroup, Stack, Step, StepLabel, Stepper, Switch, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, AlertTitle, Box, Button, Card, CardContent, Chip, CircularProgress, Collapse, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Drawer, FormControlLabel, Grid, IconButton, InputAdornment, LinearProgress, List, ListItemButton, ListItemIcon, ListItemText, MenuItem, Paper, Radio, RadioGroup, Stack, Step, StepLabel, Stepper, Switch, Tab, Tabs, TextField, Tooltip, Typography } from '@mui/material';
 import { ThemeProvider, useColorScheme } from '@mui/material/styles';
 import GridViewIcon from '@mui/icons-material/GridView';
 import SendIcon from '@mui/icons-material/Send';
@@ -425,6 +425,37 @@ function App() {
   </Box>;
 }
 
+function formatarRelogio(total) {
+  const segundos = Math.max(0, Number(total) || 0);
+  const minutos = Math.floor(segundos / 60);
+  const resto = segundos % 60;
+  return `${String(minutos).padStart(2, '0')}:${String(resto).padStart(2, '0')}`;
+}
+
+function situacaoReceitaIndisponivel() {
+  return {
+    codigo: 'COMUNICACAO',
+    envioLiberado: false,
+    mensagem: 'Não foi possível consultar a situação da Receita Federal.',
+    proximaAcao: 'A consulta será repetida. O envio não será repetido sozinho.',
+    segundosProximaConsulta: 60
+  };
+}
+
+function complementoErroReceita(erro, situacao, segundos) {
+  const texto = `${erro?.titulo || ''} ${erro?.mensagem || ''} ${erro?.descricaoOriginal || ''}`;
+  if (!/token/i.test(texto)) return '';
+  if (situacao?.codigo === 'DISPONIVEL') return 'A Receita voltou a entregar o token. Este envio não será repetido. Use outro identificador para tentar de novo.';
+  return `Próxima consulta à Receita em ${formatarRelogio(segundos)}. O envio não será repetido sozinho.`;
+}
+
+function PainelSituacaoReceita({ situacao, segundos }) {
+  if (!situacao) return <Alert severity="info">Consultando a Receita Federal antes do envio…</Alert>;
+  const severidade = situacao.codigo === 'DISPONIVEL' ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
+  const relogio = segundos > 0 ? ` Próxima consulta em ${formatarRelogio(segundos)}.` : '';
+  return <Alert severity={severidade}><AlertTitle>Situação da Receita Federal</AlertTitle><Typography>{situacao.mensagem}</Typography>{situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}</Alert>;
+}
+
 function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, onHistorico }) {
   const [layout, setLayout] = useState('D-1001');
   const [file, setFile] = useState();
@@ -440,10 +471,44 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
   const [enviando, setEnviando] = useState(false);
   const [progressoEnvio, setProgressoEnvio] = useState('');
   const [erroEnvio, setErroEnvio] = useState(null);
+  const [situacaoReceita, setSituacaoReceita] = useState(null);
+  const [segundosReceita, setSegundosReceita] = useState(0);
   const envioEmCurso = useRef(false);
+  const receitaBloqueiaEnvio = !situacaoReceita || situacaoReceita.envioLiberado === false;
   const currentLayout = layout;
   const critiques = (uploadResult?.arquivos || []).flatMap(arquivo => (arquivo.criticas || []).map(item => ({ arquivo: arquivo.nomeArquivo, idEvento: arquivo.idEvento, ...item })));
   const entidade = entities.find(item => item.id === eid);
+  useEffect(() => {
+    let cancelado = false;
+    const timers = { id: 0 };
+    async function ciclo() {
+      window.clearInterval(timers.id);
+      let dados = situacaoReceitaIndisponivel();
+      try {
+        const resposta = await api.get('/api/receita/situacao');
+        dados = resposta.data || dados;
+      } catch {
+        dados = situacaoReceitaIndisponivel();
+      }
+      if (cancelado) return;
+      setSituacaoReceita(dados);
+      let restante = Number(dados.segundosProximaConsulta) || 0;
+      setSegundosReceita(restante);
+      if (restante <= 0) return;
+      timers.id = window.setInterval(() => {
+        restante -= 1;
+        if (cancelado) return;
+        if (restante <= 0) {
+          window.clearInterval(timers.id);
+          ciclo();
+          return;
+        }
+        setSegundosReceita(restante);
+      }, 1000);
+    }
+    ciclo();
+    return () => { cancelado = true; window.clearInterval(timers.id); };
+  }, [api, uid]);
 
   function endpointCsv(leiaute) {
     if (leiaute === 'D-1011') return '/api/layouts/d1011/validate-csv';
@@ -696,14 +761,15 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     <Typography>Entidade: {entidade ? `${entidade.legalName} — ${entidade.cnpjRoot}` : '—'} · {currentLayout}</Typography>
     <Typography>Arquivo: {nomeArquivo || '—'}</Typography>
     {!envio && <Alert severity="info">A validação local foi concluída. Confirme para assinar e transmitir. O protocolo de recepção não significa que a declaração foi aceita.</Alert>}
-    {!envio && <Button variant="contained" disabled={enviando || !arquivoValido} onClick={enviarArquivo} startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : null}>{enviando ? 'Enviando…' : rotuloAcaoEnvio(false)}</Button>}
+    {!envio && <Button variant="contained" disabled={enviando || !arquivoValido || receitaBloqueiaEnvio} onClick={enviarArquivo} startIcon={enviando ? <CircularProgress size={16} color="inherit" /> : null}>{enviando ? 'Enviando…' : rotuloAcaoEnvio(false)}</Button>}
     {enviando && <Box><LinearProgress /><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{progressoEnvio || 'Enviando à Receita Federal…'}</Typography></Box>}
-    {erroEnvio && <TransmissionErrorAlert erro={erroEnvio} aoRepetir={enviarArquivo} repetindo={enviando} />}
+    {erroEnvio && <TransmissionErrorAlert erro={erroEnvio} aoRepetir={enviarArquivo} repetindo={enviando} complemento={complementoErroReceita(erroEnvio, situacaoReceita, segundosReceita)} />}
     {envio && <Alert severity={envio.enviado ? 'info' : 'warning'}>{envio.enviado ? textoSituacaoEnvio(envio.transmissao) : (motivoRecusa(envio) || 'Envio recusado antes da recepção.')}</Alert>}
     {envio && <EnvioSimuladoCard envio={envio} api={api} uid={uid} eid={eid} />}
     <Button onClick={() => setEtapa(1)} disabled={enviando}>Voltar à validação</Button>
   </Stack>;
   return <Stack spacing={2}>
+    <PainelSituacaoReceita situacao={situacaoReceita} segundos={segundosReceita} />
     <Card><CardContent><Stack spacing={3}>
       <Stepper activeStep={etapa}>
         {['Arquivo', 'Validação', 'Envio'].map((rotulo, indice) => <Step key={rotulo}><StepLabel onClick={() => irPara(indice)} sx={{ cursor: 'pointer' }}>{rotulo}</StepLabel></Step>)}
