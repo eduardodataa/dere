@@ -41,6 +41,7 @@ class MontagemDetalheSituacaoTest {
     assertEquals(500, detalhe.httpStatus());
     assertEquals(corpo, detalhe.resposta());
     assertTrue(detalhe.operacao().contains("somente o token"));
+    assertFalse(detalhe.operacao().contains("lote não foi enviado"));
   }
 
   @Test

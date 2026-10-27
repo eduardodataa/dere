@@ -490,13 +490,30 @@ function complementoErroReceita(erro, situacao, segundos) {
 
 function PainelSituacaoReceita({ situacao, segundos }) {
   const [aberto, setAberto] = useState(false);
+  const [pulso, setPulso] = useState(false);
+  const [atualizadoEm, setAtualizadoEm] = useState('');
+  const marcoAnterior = useRef('');
+  useEffect(() => {
+    const marco = situacao?.detalhe?.verificadoEm || '';
+    if (!marco) return undefined;
+    if (marcoAnterior.current && marcoAnterior.current !== marco) {
+      setAtualizadoEm(marco);
+      setPulso(true);
+      const timer = window.setTimeout(() => setPulso(false), 8000);
+      marcoAnterior.current = marco;
+      return () => window.clearTimeout(timer);
+    }
+    marcoAnterior.current = marco;
+    return undefined;
+  }, [situacao]);
   if (!situacao) return <Alert severity="info">Consultando a Receita Federal antes do envio…</Alert>;
   const severidade = situacao.codigo === 'DISPONIVEL' ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
   const relogio = segundos > 0 ? ` Próxima consulta em ${formatarRelogio(segundos)}.` : '';
   const aviso = avisoSituacao(situacao);
   const linhas = linhasDetalheSituacao(situacao);
-  return <Alert severity={severidade} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+  return <Alert className={pulso ? 'painel-situacao-atualizado' : undefined} severity={severidade} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
     <AlertTitle>Situação da Receita Federal</AlertTitle>
+    {atualizadoEm ? <Typography className="aviso-atualizacao" variant="body2">Consulta atualizada às {formatarInstante(atualizadoEm)}.</Typography> : null}
     <Typography>{situacao.mensagem}</Typography>
     {aviso ? <Typography variant="body2" sx={{ mt: 0.5 }}>{aviso}</Typography> : null}
     {situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}

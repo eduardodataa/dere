@@ -35,3 +35,6 @@ body.com-barra-ambiente .content,body.com-barra-ambiente .login-shell{padding-bo
 .zona-arquivo{display:flex;flex-direction:column;align-items:center;gap:8px;border:1px dashed var(--mui-palette-divider,#94a3b8);border-radius:12px;padding:28px 16px;text-align:center;background:var(--mui-palette-background-paper,#f8fafc);color:inherit;cursor:pointer}
 .zona-arquivo:hover{border-color:var(--mui-palette-primary-main,#1976D2);background:color-mix(in srgb,var(--mui-palette-primary-main,#1976D2) 8%,var(--mui-palette-background-paper,#fff))}
 .sidebar .MuiListItemIcon-root{color:inherit;min-width:36px}
+.painel-situacao-atualizado{outline:2px solid #b45309;outline-offset:2px;animation:painel-situacao-pulso 1.1s ease-in-out 3}
+.aviso-atualizacao{font-weight:700;color:#9a3412}
+@keyframes painel-situacao-pulso{0%,100%{box-shadow:0 0 0 0 rgba(180,83,9,.45)}50%{box-shadow:0 0 0 8px rgba(180,83,9,0)}}

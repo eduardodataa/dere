@@ -35,7 +35,7 @@ final class MontagemDetalheSituacao {
         texto(cfg.tokenUrl()),
         texto(cfg.baseUrl()),
         ambiente(cfg),
-        "POST grant_type=client_credentials. A verificação pediu somente o token. O lote não foi enviado.",
+        "POST grant_type=client_credentials. A verificação pediu somente o token.",
         status,
         resposta,
         quando.toString());
