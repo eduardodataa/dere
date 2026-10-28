@@ -12,6 +12,7 @@ public class SituacaoReceitaService {
   private final ReceitaIntegraAuthClient auth;
   private SituacaoReceita cache;
   private Instant expira = Instant.EPOCH;
+  private boolean confirmada;
 
   public SituacaoReceitaService(ConfiguracaoIntegracaoService settings, ReceitaIntegraAuthClient auth) {
     this.settings = settings;
@@ -24,6 +25,7 @@ public class SituacaoReceitaService {
       return ClassificacaoSituacaoReceita.simulado().comDetalhe(MontagemDetalheSituacao.simulado(cfg, Instant.now()));
     }
     var agora = Instant.now();
+    if (cache != null && confirmada) return cache.comSegundos(0);
     if (cache != null && expira.isAfter(agora)) {
       var restante = (int) Math.max(1, Duration.between(agora, expira).toSeconds());
       return cache.comSegundos(restante);
@@ -39,8 +41,15 @@ public class SituacaoReceitaService {
     }
     situacao = situacao.comDetalhe(MontagemDetalheSituacao.consultado(cfg, agora, falha));
     cache = situacao;
-    expira = agora.plusSeconds(Math.max(1, situacao.segundosProximaConsulta()));
-    return situacao;
+    confirmada = situacao.envioLiberado() && situacao.segundosProximaConsulta() <= 0;
+    expira = confirmada ? agora : agora.plusSeconds(Math.max(1, situacao.segundosProximaConsulta()));
+    return confirmada ? situacao.comSegundos(0) : situacao;
+  }
+
+  public synchronized void registrarIndisponivel() {
+    confirmada = false;
+    cache = null;
+    expira = Instant.EPOCH;
   }
 
   private static String texto(Throwable ex) {

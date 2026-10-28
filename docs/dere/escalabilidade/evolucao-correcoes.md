@@ -1,6 +1,6 @@
 # Evolução das correções
 
-Atualizado em 22/10/2026.
+Atualizado em 28/10/2026.
 
 Controle do que já entrou no código e do que continua aberto. O diagnóstico original, com a evidência de cada risco, está em [auditoria-arquitetura.md](auditoria-arquitetura.md). Os códigos R01–R31 são os dessa auditoria.
 
@@ -9,7 +9,7 @@ Marque aqui quando um item mudar de estado. Não use este arquivo como plano de 
 ## Feito
 
 - [x] **R08 — Consulta agendada.** Lote real consulta a Receita. Lote simulado fica no mock. Cada lote grava em transação própria (`ConsultaLoteAgendada`, `PersistenciaConsultaLote`).
-- [x] **R09 — HTTP do envio fora da transação.** O envio é gravado como `RESULTADO_DESCONHECIDO` antes da chamada. Timeout, rede ou 5xx permanecem nesse estado e o mesmo id não é reenviado. Recusa definitiva (400, 401, 403, 404) grava `REJECTED`.
+- [x] **R09 — HTTP do envio fora da transação.** O envio é gravado como `RESULTADO_DESCONHECIDO` antes da chamada. Timeout, rede ou 5xx depois do POST permanecem nesse estado e o mesmo id não é reenviado. Recusa definitiva (400, 401, 403, 404) grava `REJECTED`. Falha antes do POST passa para `AGUARDANDO_ENVIO` e entra no reenvio do lote que não saiu.
 - [x] **R09 — Consulta manual fora da transação.** `query` e `consultarProtocolo` leem e chamam a Receita fora do banco. A gravação do retorno entra numa transação nova e recarrega o lote pelo id.
 - [x] **R04 — Certificado do envio real.** Sem certificado A1 da entidade, o envio real responde 422. O certificado de teste só entra no envio simulado.
 - [x] **R05 — DOCTYPE.** XML com `<!DOCTYPE` vira crítica e não segue para o XSD nem para a conversão. O validador também bloqueia DTD e schema externos no documento (`XmlSupport`, `ServicoValidacaoLeiaute`).
@@ -17,6 +17,8 @@ Marque aqui quando um item mudar de estado. Não use este arquivo como plano de 
 - [x] **R17 — Multipart.** `spring.servlet.multipart.max-file-size` e `max-request-size` estão em 50 MB em `application.yml`. Sem isso o padrão do Spring (1 MB) descartava o arquivo antes do teto do código.
 - [x] **R01 e R02 — Acesso das APIs, no recorte desta POC.** Login devolve token HMAC. O filtro cobre `/api/**`, exceto `POST /api/auth/login` e `GET /api/ambiente`. O `X-User-Id` enviado pelo cliente é ignorado. Relatório, tentativas, lista de entidades e validações exigem o usuário do token e o vínculo com a entidade.
 - [x] **Força bruta no login.** Cinco falhas do mesmo usuário, ou trinta do mesmo IP, bloqueiam novas tentativas por 15 minutos. O contador fica na memória desta instância.
+- [x] **Reenvio do lote que não saiu.** Se a falha acontece antes do POST, o lote fica `AGUARDANDO_ENVIO`. Quando a consulta do token volta a responder, o agendador reenvia o mesmo XML assinado e o mesmo id. Na tela de envio e no histórico, esse lote tem um botão Info com essa explicação. Duplicidade, recusa 400/401/403/404, timeout ou resposta sem protocolo tiram o lote desse ciclo. `RESULTADO_DESCONHECIDO` continua sem reenvio e sem esse botão.
+- [x] **Consulta do token.** Com a Receita respondendo, o painel não pede outro token. Se a resposta for HTTP 429, a próxima tentativa espera 15 minutos. Nas outras falhas, espera 5 minutos. Um envio que falha antes do POST ou com 429 libera uma nova consulta.
 
 ## Parcial
 
@@ -40,7 +42,7 @@ Marque aqui quando um item mudar de estado. Não use este arquivo como plano de 
 - [ ] **R03 — Origem do browser.** A API aceita chamada de qualquer site. O token fica na memória da página, não em cookie, então outro site não o lê sozinho. Exemplo: restringir a origem a `dere.dataa.com.br` agora quebraria o uso em `localhost` e no Vite. A lista de origens entra quando o domínio de produção estiver fechado.
 - [ ] **R06 — Ambientes na mesma máquina.** Staging, homologação e produção sobem na mesma EC2 e no mesmo MariaDB. Exemplo: um teste pesado em staging disputa CPU e disco com a produção. Separar é máquina e banco novos, não uma alteração isolada de código.
 - [ ] **R07 — Chave que cifra o certificado.** A chave atual é o SHA-256 da string de configuração. Quem tem essa string abre o P12 e o segredo gravados. Exemplo de destino: o KMS guarda a chave e o aplicativo só pede para cifrar e decifrar, com rotação. Sem o KMS ligado na conta, não há o que chamar.
-- [ ] **R12 — Cabeçalho de idempotência.** O POST envia `Idempotency-Key` com o id do evento. O manual da Receita não diz o que um segundo POST com a mesma chave faz. Exemplo: pode devolver o protocolo do primeiro lote, ou pode receber outro lote. Enquanto isso não estiver escrito, o sistema não repete o POST sozinho.
+- [ ] **R12 — Cabeçalho de idempotência.** O POST envia `Idempotency-Key` com o id do evento. O manual da Receita não diz o que um segundo POST com a mesma chave faz. O reenvio automático usa essa mesma chave só quando o XML não chegou a sair. Se a resposta falar em duplicidade, o lote sai do ciclo e fica para conciliação. Um POST que pode ter sido recebido continua sem repetição.
 - [ ] **R22 — Schema fora do Flyway.** Colunas como `is_master`, `batch_id` e `secret_ref`, e a tabela `dere_app_setting`, foram criadas por script na EC2. Exemplo: um banco novo, só com o Flyway, sobe sem essas colunas e a aplicação quebra no primeiro login ou envio. Migration nova espera um baseline único do que já está em produção.
 - [ ] **R23 — XML grande no disco local.** Acima de 400 KB, o XML é gravado em `data/transmissoes`, no disco do processo. Exemplo: o backup do MariaDB não leva esse arquivo, e uma segunda instância não o encontra. O destino é armazenamento externo, como S3. Pasta local não resolve.
 - [ ] **R28 — Conexões com o banco.** O pool segue no padrão do Spring Boot, 10 conexões. A chamada à Receita já não segura conexão durante a espera. Exemplo: mudar para 50 agora, com API e consulta no mesmo processo, é chute. O número entra quando a API e o worker estiverem separados e a medição mostrar a fila de espera.

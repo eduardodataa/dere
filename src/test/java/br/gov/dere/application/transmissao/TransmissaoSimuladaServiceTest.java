@@ -132,7 +132,7 @@ class TransmissaoSimuladaServiceTest {
     return new TransmissaoSimuladaService(integration, mock(TransmissaoGovernoPort.class), access,
         new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events,
         mock(br.gov.dere.persistence.DereEventErrorRepository.class), batches, attempts,
-        new ArmazenamentoArtefatoTransmissao(), TransacaoIsolada.direta());
+        new ArmazenamentoArtefatoTransmissao(), TransacaoIsolada.direta(), mock(br.gov.dere.application.receita.SituacaoReceitaService.class));
   }
 
   private static void assertXsd(String xml, String xsd) {

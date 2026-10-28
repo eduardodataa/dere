@@ -20,7 +20,7 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import './style.css';
 import { temaDere } from './tema';
 import { bloqueiaEnvioSimultaneo, deveRetentarAutomatico, diagnosticoRetornoReceita, interpretarErroTransmissao } from './erroTransmissao';
-import { TransmissionErrorAlert } from './TransmissionErrorAlert';
+import { BotaoInfoReenvio, TransmissionErrorAlert } from './TransmissionErrorAlert';
 import logotipoDataA from './dataa-logotipo.png';
 import seloDere from './dere-selo.jpg';
 
@@ -440,7 +440,7 @@ function situacaoReceitaIndisponivel() {
     envioLiberado: false,
     mensagem: 'Não foi possível consultar a situação da Receita Federal.',
     aviso: AVISO_SISTEMA_FORA,
-    proximaAcao: 'A consulta será repetida. O envio não será repetido sozinho.',
+    proximaAcao: 'A consulta será repetida. O lote que não chegou a sair será reenviado com o mesmo identificador.',
     segundosProximaConsulta: 60,
     detalhe: {
       consultaRealizada: false,
@@ -484,8 +484,8 @@ function linhasDetalheSituacao(situacao) {
 function complementoErroReceita(erro, situacao, segundos) {
   const texto = `${erro?.titulo || ''} ${erro?.mensagem || ''} ${erro?.descricaoOriginal || ''}`;
   if (!/token/i.test(texto)) return '';
-  if (situacao?.codigo === 'DISPONIVEL') return 'A Receita voltou a entregar o token. Este envio não será repetido. Use outro identificador para tentar de novo.';
-  return `Próxima consulta à Receita em ${formatarRelogio(segundos)}. O envio não será repetido sozinho.`;
+  if (situacao?.codigo === 'DISPONIVEL') return 'A Receita voltou a entregar o token. Este identificador será reenviado automaticamente.';
+  return `O lote não saiu. O mesmo identificador será reenviado quando a Receita voltar. Próxima consulta em ${formatarRelogio(segundos)}.`;
 }
 
 function PainelSituacaoReceita({ situacao, segundos }) {
@@ -553,6 +553,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     const timers = { id: 0 };
     async function ciclo() {
       window.clearInterval(timers.id);
+      window.clearTimeout(timers.id);
       let dados = situacaoReceitaIndisponivel();
       try {
         const resposta = await api.get('/api/receita/situacao');
@@ -564,7 +565,10 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
       setSituacaoReceita(dados);
       let restante = Number(dados.segundosProximaConsulta) || 0;
       setSegundosReceita(restante);
-      if (restante <= 0) return;
+      if (restante <= 0) {
+        timers.id = window.setTimeout(ciclo, 60000);
+        return;
+      }
       timers.id = window.setInterval(() => {
         restante -= 1;
         if (cancelado) return;
@@ -577,7 +581,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
       }, 1000);
     }
     ciclo();
-    return () => { cancelado = true; window.clearInterval(timers.id); };
+    return () => { cancelado = true; window.clearInterval(timers.id); window.clearTimeout(timers.id); };
   }, [api, uid]);
 
   function endpointCsv(leiaute) {
@@ -902,6 +906,7 @@ function rotuloOperacaoEnvio(operacao) {
 }
 
 function rotuloStatusEnvio(status) {
+  if (status === 'AGUARDANDO_ENVIO') return 'Aguardando reenvio';
   if (status === 'RESULTADO_DESCONHECIDO') return 'Resultado desconhecido';
   if (status === 'PROCESSING' || status === 'PROTOCOL_RECEIVED') return 'Recebida para processamento';
   if (status === 'ACCEPTED') return 'Aceita';
@@ -911,6 +916,7 @@ function rotuloStatusEnvio(status) {
 }
 
 function grupoSituacao(status) {
+  if (status === 'AGUARDANDO_ENVIO') return 'aguardando';
   if (status === 'RESULTADO_DESCONHECIDO') return 'desconhecido';
   if (status === 'ACCEPTED' || status === 'ACCEPTED_WITH_WARNINGS') return 'aceita';
   if (status === 'REJECTED') return 'erro';
@@ -920,6 +926,7 @@ function grupoSituacao(status) {
 
 function textoSituacaoEnvio(transmissao) {
   if (!transmissao) return 'Enviada. A situação na Receita ainda não foi confirmada.';
+  if (grupoSituacao(transmissao.status) === 'aguardando') return 'O lote não saiu. O mesmo arquivo e o mesmo identificador serão reenviados quando a Receita voltar.';
   if (grupoSituacao(transmissao.status) === 'desconhecido') return 'O lote pode ter sido recebido pela Receita, mas o protocolo não foi confirmado. Não reenvie este identificador. Concilie pelo protocolo, se a Receita o tiver emitido.';
   const situacao = rotuloStatusEnvio(transmissao.status);
   if (grupoSituacao(transmissao.status) === 'aceita') return `Aceita pela Receita. ${transmissao.receiptNumber ? `Recibo ${transmissao.receiptNumber}.` : ''}`.trim();
@@ -1148,7 +1155,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
     if (!layout && filtroLayout && linha.layout !== filtroLayout) return false;
     if (filtroOperacao && String(linha.operationType) !== filtroOperacao) return false;
     if (filtroProtocolo && !(linha.protocol || '').toLowerCase().includes(filtroProtocolo.toLowerCase())) return false;
-    if (filtroStatus === 'PENDENCIAS' && !['processando', 'erro', 'desconhecido'].includes(grupoSituacao(linha.status))) return false;
+    if (filtroStatus === 'PENDENCIAS' && !['processando', 'erro', 'desconhecido', 'aguardando'].includes(grupoSituacao(linha.status))) return false;
     if (filtroStatus && filtroStatus !== 'PENDENCIAS' && linha.status !== filtroStatus) return false;
     return noIntervalo(linha);
   });
@@ -1175,7 +1182,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
       <TextField type="date" label="Data inicial" InputLabelProps={{ shrink: true }} value={de} onChange={event => setDe(event.target.value)} sx={{ minWidth: 170 }} />
       <TextField type="date" label="Data final" InputLabelProps={{ shrink: true }} value={ate} onChange={event => setAte(event.target.value)} sx={{ minWidth: 170 }} />
       <TextField select label="Layout" value={filtroLayout} onChange={event => setFiltroLayout(event.target.value)} sx={{ minWidth: 160 }}><MenuItem value="">Todos</MenuItem>{TIPOS_DECLARACAO.map(([codigo]) => <MenuItem key={codigo} value={codigo}>{codigo}</MenuItem>)}</TextField>
-      <TextField select label="Situação" value={filtroStatus} onChange={event => setFiltroStatus(event.target.value)} sx={{ minWidth: 240 }}><MenuItem value="">Todas</MenuItem><MenuItem value="PENDENCIAS">Pendências</MenuItem><MenuItem value="PROTOCOL_RECEIVED">Recebida para processamento</MenuItem><MenuItem value="PROCESSING">Recebida para processamento</MenuItem><MenuItem value="ACCEPTED">Aceita</MenuItem><MenuItem value="ACCEPTED_WITH_WARNINGS">Aceita com avisos</MenuItem><MenuItem value="REJECTED">Rejeitada</MenuItem></TextField>
+      <TextField select label="Situação" value={filtroStatus} onChange={event => setFiltroStatus(event.target.value)} sx={{ minWidth: 240 }}><MenuItem value="">Todas</MenuItem><MenuItem value="PENDENCIAS">Pendências</MenuItem><MenuItem value="AGUARDANDO_ENVIO">Aguardando reenvio</MenuItem><MenuItem value="PROTOCOL_RECEIVED">Recebida para processamento</MenuItem><MenuItem value="PROCESSING">Recebida para processamento</MenuItem><MenuItem value="ACCEPTED">Aceita</MenuItem><MenuItem value="ACCEPTED_WITH_WARNINGS">Aceita com avisos</MenuItem><MenuItem value="REJECTED">Rejeitada</MenuItem></TextField>
       <Button variant="contained" onClick={() => emitirRelatorio().catch(() => setMessage('Falha ao exportar o relatório'))} disabled={!filtradas.length}>Exportar relatório PDF</Button>
       <Button onClick={() => setAvancados(atual => !atual)}>{avancados ? 'Ocultar filtros' : 'Filtros avançados'}</Button>
     </Stack>}
@@ -1185,7 +1192,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
     </Stack></Collapse>}
     {!resumo && <Box><Button onClick={() => setConsultaAberta(atual => !atual)}>{consultaAberta ? 'Fechar consulta de protocolo' : 'Consultar protocolo'}</Button><Collapse in={consultaAberta}><Box sx={{ mt: 2 }}><PainelConsulta api={api} uid={uid} eid={eid} layout={filtroLayout} /></Box></Collapse></Box>}
     {!visiveis.length && <Alert severity="info">Nenhum envio para os filtros informados.</Alert>}
-    {visiveis.length > 0 && <Box className="tabela-criticas-wrap" sx={{ maxHeight: 'none' }}><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{colunas.map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{visiveis.map(linha => <Box component="tr" key={linha.batchId || linha.eventId}><Box component="td">{formatarDia(linha.sentAt || linha.createdAt)}</Box>{resumo ? <Box component="td">{linha.sourceName || '—'}</Box> : <><Box component="td">{linha.layout}</Box><Box component="td">{rotuloOperacaoEnvio(linha.operationType)}</Box></>}<Box component="td"><Chip size="small" color={grupoSituacao(linha.status) === 'aceita' ? 'success' : grupoSituacao(linha.status) === 'erro' ? 'error' : 'warning'} label={rotuloStatusEnvio(linha.status)} /></Box>{!resumo && <Box component="td">{linha.batchId && <Button size="small" onClick={() => abrir(linha).catch(() => setMessage('Falha ao abrir os detalhes'))}>Detalhes</Button>}</Box>}</Box>)}</Box></Box></Box>}
+    {visiveis.length > 0 && <Box className="tabela-criticas-wrap" sx={{ maxHeight: 'none' }}><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{colunas.map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{visiveis.map(linha => <Box component="tr" key={linha.batchId || linha.eventId}><Box component="td">{formatarDia(linha.sentAt || linha.createdAt)}</Box>{resumo ? <Box component="td">{linha.sourceName || '—'}</Box> : <><Box component="td">{linha.layout}</Box><Box component="td">{rotuloOperacaoEnvio(linha.operationType)}</Box></>}<Box component="td"><Stack direction="row" spacing={0.5} alignItems="center"><Chip size="small" color={grupoSituacao(linha.status) === 'aceita' ? 'success' : grupoSituacao(linha.status) === 'erro' ? 'error' : 'warning'} label={rotuloStatusEnvio(linha.status)} />{grupoSituacao(linha.status) === 'aguardando' ? <BotaoInfoReenvio compacto /> : null}</Stack></Box>{!resumo && <Box component="td">{linha.batchId && <Button size="small" onClick={() => abrir(linha).catch(() => setMessage('Falha ao abrir os detalhes'))}>Detalhes</Button>}</Box>}</Box>)}</Box></Box></Box>}
     <Dialog open={Boolean(detalhe)} onClose={() => setDetalhe(undefined)} fullWidth maxWidth="md">
       <DialogTitle>Detalhes do envio</DialogTitle>
       <DialogContent><Stack spacing={1.5} sx={{ pt: 1 }}>
@@ -1195,7 +1202,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
         <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ wordBreak: 'break-all' }}>Identificador: {detalhe?.eventIdentifier || '—'}</Typography>{detalhe?.eventIdentifier && <Button size="small" onClick={() => copiarTexto(detalhe.eventIdentifier, setMessage)}>Copiar</Button>}</Stack>
         <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ wordBreak: 'break-all' }}>Protocolo: {detalhe?.protocol || '—'}</Typography>{detalhe?.protocol && <Button size="small" onClick={() => copiarTexto(detalhe.protocol, setMessage)}>Copiar</Button>}</Stack>
         <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ wordBreak: 'break-all' }}>Recibo: {detalhe?.receiptNumber || '—'}</Typography>{detalhe?.receiptNumber && <Button size="small" onClick={() => copiarTexto(detalhe.receiptNumber, setMessage)}>Copiar</Button>}</Stack>
-        <Chip sx={{ alignSelf: 'flex-start' }} color={grupoSituacao(detalhe?.status) === 'aceita' ? 'success' : grupoSituacao(detalhe?.status) === 'erro' ? 'error' : 'warning'} label={rotuloStatusEnvio(detalhe?.status)} />
+        <Stack direction="row" spacing={1} alignItems="center"><Chip sx={{ alignSelf: 'flex-start' }} color={grupoSituacao(detalhe?.status) === 'aceita' ? 'success' : grupoSituacao(detalhe?.status) === 'erro' ? 'error' : 'warning'} label={rotuloStatusEnvio(detalhe?.status)} />{grupoSituacao(detalhe?.status) === 'aguardando' ? <BotaoInfoReenvio /> : null}</Stack>
         <Typography variant="subtitle2">Histórico de processamento</Typography>
         {!tentativas.length && <Typography color="text.secondary">Nenhuma tentativa registrada.</Typography>}
         {tentativas.map(item => <Typography key={item.id} color="text.secondary">{formatarDataEnvio(item.startedAt)} — tentativa {item.attempt} — {item.outcome}</Typography>)}

@@ -63,6 +63,7 @@ public class DereBatchEntity {
   public int getQueryAttempts() { return queryAttempts; }
   public Instant getCreatedAt() { return createdAt; }
   public Instant getSentAt() { return sentAt; }
+  public Instant getNextQueryAt() { return nextQueryAt; }
   public Long getUserId() { return userId; }
   public Long getEntityId() { return entityId; }
 
@@ -75,6 +76,7 @@ public class DereBatchEntity {
     status = EventStatus.PROCESSING;
     sentAt = Instant.now();
     nextQueryAt = Instant.now().plusSeconds(30);
+    leaseUntil = null;
   }
 
   public void received(String value, String response) {
@@ -106,6 +108,32 @@ public class DereBatchEntity {
   public void resultadoDesconhecido() {
     status = EventStatus.RESULTADO_DESCONHECIDO;
     nextQueryAt = null;
+    leaseUntil = null;
+  }
+
+  public void resultadoDesconhecido(String resposta) {
+    resultadoDesconhecido();
+    responseXml = resposta;
+  }
+
+  public void aguardandoEnvio() {
+    status = EventStatus.AGUARDANDO_ENVIO;
+    nextQueryAt = Instant.now();
+    leaseUntil = null;
+  }
+
+  public boolean claimReenvio(Instant now, long leaseSeconds) {
+    if (status != EventStatus.AGUARDANDO_ENVIO) return false;
+    if (protocol != null && !protocol.isBlank()) return false;
+    if (leaseUntil != null && leaseUntil.isAfter(now)) return false;
+    if (nextQueryAt != null && nextQueryAt.isAfter(now)) return false;
+    leaseUntil = now.plusSeconds(leaseSeconds);
+    return true;
+  }
+
+  public void adiarReenvio(long segundos) {
+    if (status != EventStatus.AGUARDANDO_ENVIO) return;
+    nextQueryAt = Instant.now().plusSeconds(Math.max(1, segundos));
     leaseUntil = null;
   }
 

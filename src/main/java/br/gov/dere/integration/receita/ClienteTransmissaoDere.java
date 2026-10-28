@@ -17,11 +17,12 @@ public class ClienteTransmissaoDere {
   }
 
   public RespostaHttpGoverno transmit(String batchXml, String idempotencyKey) {
+    var acesso = tokenAntesDoPost();
     var base = settings.current().baseUrl();
     var request = client.post()
         .uri(base + "/v1/recepcao/lotes")
         .contentType(MediaType.APPLICATION_XML)
-        .header("Authorization", "Bearer " + auth.token());
+        .header("Authorization", "Bearer " + acesso);
     if (idempotencyKey != null && !idempotencyKey.isBlank()) {
       request.header("Idempotency-Key", idempotencyKey);
     }
@@ -38,6 +39,14 @@ public class ClienteTransmissaoDere {
 
   public void invalidateToken() {
     auth.invalidate();
+  }
+
+  private String tokenAntesDoPost() {
+    try {
+      return auth.token();
+    } catch (RuntimeException ex) {
+      throw new FalhaAntesDaTransmissao(ex);
+    }
   }
 
   private static String read(org.springframework.http.client.ClientHttpResponse response) throws java.io.IOException {

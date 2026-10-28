@@ -8,6 +8,7 @@ import br.gov.dere.application.periodico.D1101CsvConverter;
 import br.gov.dere.application.periodico.D1199CsvConverter;
 import br.gov.dere.application.pgcc.D1011CsvConverter;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.receita.SituacaoReceitaService;
 import br.gov.dere.application.validacao.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validacao.relatorio.Critica;
 import br.gov.dere.application.validacao.relatorio.RelatorioValidacao;
@@ -58,6 +59,7 @@ public class TransmissaoSimuladaService {
   private final DereTentativaTransmissaoRepository attempts;
   private final ArmazenamentoArtefatoTransmissao artefatos;
   private final TransacaoIsolada transacao;
+  private final SituacaoReceitaService situacaoReceita;
   private final ConstrutorXmlRetornoOficial retornos = new ConstrutorXmlRetornoOficial();
   private final DereXmlSigner signer = new DereXmlSigner();
   private final DereXmlSignatureVerifier verifier = new DereXmlSignatureVerifier();
@@ -78,7 +80,8 @@ public class TransmissaoSimuladaService {
       DereBatchRepository batches,
       DereTentativaTransmissaoRepository attempts,
       ArmazenamentoArtefatoTransmissao artefatos,
-      TransacaoIsolada transacao) {
+      TransacaoIsolada transacao,
+      SituacaoReceitaService situacaoReceita) {
     this.integration = integration;
     this.government = government;
     this.access = access;
@@ -91,6 +94,7 @@ public class TransmissaoSimuladaService {
     this.attempts = attempts;
     this.artefatos = artefatos;
     this.transacao = transacao;
+    this.situacaoReceita = situacaoReceita;
   }
 
   public ResultadoEnvioSimulado simulate(Long userId, Long entityId, RequisicaoEnvioSimulado request) {
@@ -113,7 +117,9 @@ public class TransmissaoSimuladaService {
       var loteExistente = existente.getBatchId() == null ? null : batches.findById(existente.getBatchId()).orElse(null);
       var problema = existente.getStatus() == EventStatus.RESULTADO_DESCONHECIDO
           ? "O envio anterior deste id não teve confirmação da Receita. O lote pode ter sido recebido. Não reenvie este id; concilie pelo protocolo, se a Receita o tiver emitido."
-          : "Já existe transmissão com este id. O lote anterior está em Transmissões. Para alteração ou exclusão use outro id (tpOper 2 ou 3).";
+          : existente.getStatus() == EventStatus.AGUARDANDO_ENVIO
+              ? "Este id ainda não foi transmitido. O mesmo lote será reenviado quando a Receita voltar. Não crie outro id."
+              : "Já existe transmissão com este id. O lote anterior está em Transmissões. Para alteração ou exclusão use outro id (tpOper 2 ou 3).";
       return new ResultadoEnvioSimulado(false, comCritica(relatorio, arquivo, "id", identificador,
           "Identificador de evento ainda não transmitido", problema),
           loteExistente == null ? visao(null, existente) : visao(loteExistente, existente));
@@ -147,9 +153,14 @@ public class TransmissaoSimuladaService {
       var recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
       return transacao.executar(() -> concluirEnvio(preparado, protocolo, recepcao, 200, true, leiaute, userId, entityId, arquivo, xml, relatorio));
     } catch (ExcecaoTransmissaoGoverno ex) {
+      if (ex.statusCode() == 429) situacaoReceita.registrarIndisponivel();
       var definitiva = recusaDefinitiva(ex);
       if (definitiva) transacao.executar(() -> rejeitarEnvio(preparado, ex));
       throw definitiva ? falhaGoverno(ex, identificador) : falhaDesconhecido(ex, identificador);
+    } catch (EnvioNaoIniciadoException ex) {
+      situacaoReceita.registrarIndisponivel();
+      transacao.executar(() -> marcarAguardando(preparado));
+      throw falhaNaoIniciado(ex, identificador);
     } catch (ResponseStatusException ex) {
       throw ex;
     } catch (Exception ex) {
@@ -285,6 +296,16 @@ public class TransmissaoSimuladaService {
     evento.attachBatch(batch.getId());
     events.saveAndFlush(evento);
     return new Preparacao(evento.getId(), batch.getId());
+  }
+
+  private Void marcarAguardando(Preparacao preparado) {
+    var evento = events.findById(preparado.eventId()).orElseThrow();
+    var batch = batches.findById(preparado.batchId()).orElseThrow();
+    evento.aguardandoEnvio();
+    batch.aguardandoEnvio();
+    events.save(evento);
+    batches.save(batch);
+    return null;
   }
 
   private ResultadoEnvioSimulado concluirEnvio(
@@ -546,6 +567,12 @@ public class TransmissaoSimuladaService {
 
   private static boolean protocoloSimulado(String protocolo) {
     return protocolo.matches("1\\.\\d{14}\\.\\d{6}");
+  }
+
+  private static FalhaTransmissaoException falhaNaoIniciado(EnvioNaoIniciadoException ex, String identificador) {
+    var diagnostico = ApresentacaoErroTransmissao.naoTransmitido(ex, identificador);
+    ApresentacaoErroTransmissao.registrar(diagnostico, null);
+    return new FalhaTransmissaoException(diagnostico, ex);
   }
 
   private static FalhaTransmissaoException falhaDesconhecido(ExcecaoTransmissaoGoverno ex, String identificador) {

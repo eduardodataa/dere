@@ -75,8 +75,10 @@ class ApresentacaoErroTransmissaoTest {
     assertEquals("AUTENTICACAO", diagnostico.categoria());
     assertEquals("A Receita não entregou o token de acesso", diagnostico.titulo());
     assertTrue(diagnostico.mensagem().contains("não foi enviado"));
+    assertTrue(diagnostico.orientacao().contains("mesmo identificador"));
+    assertFalse(diagnostico.orientacao().toLowerCase().contains("outro identificador"));
     assertFalse(diagnostico.repetir());
-    assertTrue(diagnostico.inconclusivo());
+    assertFalse(diagnostico.inconclusivo());
     assertEquals("DeRE10011000000016149042028101519000000017", diagnostico.identificador());
   }
 

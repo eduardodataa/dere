@@ -26,7 +26,9 @@ final class MontagemDetalheSituacao {
 
   static DetalheSituacaoReceita consultado(ConfiguracaoIntegracao cfg, Instant quando, Throwable falha) {
     var http = http(falha);
-    Integer status = http == null ? (falha == null ? 200 : null) : http.getStatusCode().value();
+    Integer status = null;
+    if (http != null) status = http.getStatusCode().value();
+    else if (falha == null) status = 200;
     String resposta = falha == null
         ? "Token entregue. O valor do token não é exibido."
         : resumir(http == null ? mensagem(falha) : corpo(http));

@@ -104,6 +104,7 @@ public class DereEventEntity {
   public void sent() { status = EventStatus.PROTOCOL_RECEIVED; sentAt = Instant.now(); }
   public void processed(EventStatus next, String receipt) { status = next; receiptNumber = receipt; processedAt = Instant.now(); }
   public void resultadoDesconhecido() { status = EventStatus.RESULTADO_DESCONHECIDO; }
+  public void aguardandoEnvio() { status = EventStatus.AGUARDANDO_ENVIO; }
   public void limparReciboFalso() {
     receiptNumber = null;
     if (status == EventStatus.ACCEPTED || status == EventStatus.ACCEPTED_WITH_WARNINGS) {

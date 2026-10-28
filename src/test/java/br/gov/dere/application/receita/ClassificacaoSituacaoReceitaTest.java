@@ -21,7 +21,8 @@ class ClassificacaoSituacaoReceitaTest {
     var situacao = ClassificacaoSituacaoReceita.disponivel();
     assertEquals("DISPONIVEL", situacao.codigo());
     assertTrue(situacao.envioLiberado());
-    assertEquals(60, situacao.segundosProximaConsulta());
+    assertEquals(0, situacao.segundosProximaConsulta());
+    assertTrue(situacao.proximaAcao().contains("fica parada"));
     assertNull(situacao.aviso());
   }
 
@@ -46,5 +47,19 @@ class ClassificacaoSituacaoReceitaTest {
     var situacao = ClassificacaoSituacaoReceita.falha("Credenciais Receita Integra não configuradas");
     assertEquals("CREDENCIAL", situacao.codigo());
     assertNull(situacao.aviso());
+  }
+
+  @Test
+  void limiteDeConsultaEsperaQuinzeMinutos() {
+    var situacao = ClassificacaoSituacaoReceita.falha("429 Too Many Requests: {\"message\":\"API rate limit exceeded\"}");
+    assertEquals("LIMITE", situacao.codigo());
+    assertFalse(situacao.envioLiberado());
+    assertEquals(ClassificacaoSituacaoReceita.INTERVALO_LIMITE_SEGUNDOS, situacao.segundosProximaConsulta());
+  }
+
+  @Test
+  void quedaEsperaCincoMinutos() {
+    var situacao = ClassificacaoSituacaoReceita.falha("I/O error on POST request");
+    assertEquals(ClassificacaoSituacaoReceita.INTERVALO_FORA_SEGUNDOS, situacao.segundosProximaConsulta());
   }
 }

@@ -10,4 +10,5 @@ public interface DereBatchRepository extends JpaRepository<DereBatchEntity, Long
   Optional<DereBatchEntity> findByProtocol(String protocol);
   List<DereBatchEntity> findByEntityIdOrderByIdDesc(Long entityId);
   List<DereBatchEntity> findTop100ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(EventStatus status, Instant now);
+  List<DereBatchEntity> findTop20ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(EventStatus status, Instant now);
 }

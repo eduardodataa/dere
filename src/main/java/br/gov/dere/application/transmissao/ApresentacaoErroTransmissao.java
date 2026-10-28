@@ -90,10 +90,7 @@ public final class ApresentacaoErroTransmissao {
           null, "Falha ao gravar a tentativa local.", null, identificadorEvento, null, null, null, List.of(), correlacao, false, true, 504);
     }
     if (contem(texto, "erro ao gerar token", "não retornou access_token", "nao retornou access_token")) {
-      return montar("AUTENTICACAO", "A Receita não entregou o token de acesso",
-          "O lote não foi enviado. A falha ocorreu ao pedir a autorização, antes da transmissão do XML.",
-          "A situação da Receita será consultada de novo no painel. O envio não será repetido sozinho. Quando o token voltar, use outro identificador: este ficou registrado como resultado indefinido.",
-          null, resumir(texto), null, identificadorEvento, null, null, null, List.of(), correlacao, false, true, 502);
+      return naoTransmitido(ex, identificadorEvento);
     }
     if (contem(texto, "crítica", "critica", "leiaute", "id do evento", "cnpj")) {
       return montar("VALIDACAO_LOCAL", "A declaração não passou na validação local",
@@ -105,6 +102,17 @@ public final class ApresentacaoErroTransmissao {
         "A declaração não foi confirmada pela Receita Federal.",
         "Não repita o envio enquanto o resultado estiver indefinido. Informe a correlação ao suporte.",
         null, resumir(texto), null, identificadorEvento, null, null, null, List.of(), correlacao, false, true, 502);
+  }
+
+  public static DiagnosticoTransmissao naoTransmitido(Throwable ex, String identificadorEvento) {
+    var correlacao = UUID.randomUUID().toString();
+    var texto = textoCausa(ex);
+    var token = contem(texto, "erro ao gerar token", "não retornou access_token", "nao retornou access_token", "access_token");
+    return montar(token ? "AUTENTICACAO" : "COMUNICACAO",
+        token ? "A Receita não entregou o token de acesso" : "O lote não foi enviado",
+        "O lote não foi enviado. A falha ocorreu antes da transmissão do XML.",
+        "O mesmo identificador será reenviado quando a Receita voltar. Não crie outro id.",
+        null, resumir(texto), null, identificadorEvento, null, null, null, List.of(), correlacao, false, false, 502);
   }
 
   public static void registrar(DiagnosticoTransmissao diagnostico, String xml) {

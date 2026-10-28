@@ -1,5 +1,6 @@
 package br.gov.dere.infrastructure.governo;
 
+import br.gov.dere.application.transmissao.EnvioNaoIniciadoException;
 import br.gov.dere.application.transmissao.TransmissaoGovernoPort;
 import br.gov.dere.application.transmissao.PoliticaStatusTransmissao;
 import br.gov.dere.domain.transmissao.ResultadoConsulta;
@@ -9,6 +10,7 @@ import br.gov.dere.integration.receita.ClienteTransmissaoDere;
 import br.gov.dere.integration.receita.RespostaHttpGoverno;
 import br.gov.dere.integration.receita.ParserRespostaGoverno;
 import br.gov.dere.integration.receita.ExcecaoTransmissaoGoverno;
+import br.gov.dere.integration.receita.FalhaAntesDaTransmissao;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -84,6 +86,8 @@ public class HttpTransmissaoGovernoAdapter implements TransmissaoGovernoPort {
     for (int tentativa = 1; tentativa <= maxAttempts; tentativa++) {
       try {
         return attempt.run();
+      } catch (FalhaAntesDaTransmissao ex) {
+        throw new EnvioNaoIniciadoException(ex);
       } catch (ExcecaoTransmissaoGoverno ex) {
         last = ex;
         if (!ex.retryable() || tentativa == maxAttempts) throw ex;

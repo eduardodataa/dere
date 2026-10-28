@@ -13,6 +13,11 @@ export function deveRetentarAutomatico(erro) {
   return erro?.repetir === true && erro?.inconclusivo !== true && erro?.categoria === 'COMUNICACAO';
 }
 
+export function aguardaReenvioAutomatico(erro) {
+  const texto = `${erro?.mensagem || ''} ${erro?.orientacao || ''}`;
+  return /antes da transmissão/i.test(texto) || /será reenviado/i.test(texto);
+}
+
 export function interpretarErroTransmissao(error) {
   const data = error?.response?.data;
   if (data?.erro) return normalizar(data.erro);

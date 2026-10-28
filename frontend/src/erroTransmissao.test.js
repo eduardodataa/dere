@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { apresentarErroTransmissao, bloqueiaEnvioSimultaneo, deveRetentarAutomatico, diagnosticoRetornoReceita, interpretarErroTransmissao, tokensAlertaTransmissao } from './erroTransmissao.js';
+import { aguardaReenvioAutomatico, apresentarErroTransmissao, bloqueiaEnvioSimultaneo, deveRetentarAutomatico, diagnosticoRetornoReceita, interpretarErroTransmissao, tokensAlertaTransmissao } from './erroTransmissao.js';
 
 test('retorno com MS1050 explica o identificador', () => {
   const xml = `<retornoLoteEventos><cdResposta>3</cdResposta><descResposta>Lote processado com sucesso - Possui um ou mais eventos com ocorrências de erro.</descResposta><protocolo>2.202610.0000000000000016071</protocolo><ocorrencias><codigo>MS1050</codigo><descricao>O campo ID do evento não está no formato esperado.</descricao><tipo>1</tipo></ocorrencias></retornoLoteEventos>`;
@@ -91,6 +91,17 @@ test('envio simultâneo fica bloqueado', () => {
   assert.equal(bloqueiaEnvioSimultaneo(false), false);
   assert.equal(deveRetentarAutomatico({ categoria: 'COMUNICACAO', repetir: true, inconclusivo: false }), true);
   assert.equal(deveRetentarAutomatico({ categoria: 'REJEICAO_RECEITA', repetir: true, inconclusivo: false }), false);
+});
+
+test('info de reenvio só quando o lote não saiu', () => {
+  assert.equal(aguardaReenvioAutomatico({
+    mensagem: 'O lote não foi enviado. A falha ocorreu antes da transmissão do XML.',
+    orientacao: 'O mesmo identificador será reenviado quando a Receita voltar. Não crie outro id.'
+  }), true);
+  assert.equal(aguardaReenvioAutomatico({
+    mensagem: 'A declaração não foi confirmada pela Receita Federal.',
+    orientacao: 'Não repita o envio enquanto o resultado estiver indefinido. Informe a correlação ao suporte.'
+  }), false);
 });
 
 test('tema claro e escuro usam tokens do MUI', () => {
