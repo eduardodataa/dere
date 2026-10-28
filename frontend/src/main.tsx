@@ -898,6 +898,12 @@ function PainelConsulta({ api, uid, eid, layout }) {
   </Stack></CardContent></Card>;
 }
 
+function podeReenviar(linha) {
+  if (!linha?.batchId || linha.protocol) return false;
+  const grupo = grupoSituacao(linha.status);
+  return grupo === 'desconhecido' || grupo === 'aguardando';
+}
+
 function rotuloOperacaoEnvio(operacao) {
   if (operacao === '1' || operacao === 1) return 'Inclusão';
   if (operacao === '2' || operacao === 2) return 'Alteração';
@@ -1050,7 +1056,8 @@ function EnvioSimuladoCard({ envio, api, uid, eid }) {
     return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Alert severity="warning">{motivoRecusa(envio) || `${rotuloCanal(envio?.transmissao)} recusado.`}</Alert>{transmissao?.protocol ? <Stack spacing={1}><Typography color="text.secondary">Lote já existente para este id. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao.protocol}`} /><Chip color={transmissao.receiptNumber ? 'success' : 'warning'} label={transmissao.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao.status)} /></Stack>{transmissao.batchId && <Tooltip title="Download do PDF com os dados do protocolo em tabela." followCursor><Button onClick={baixarPdf}>PDF do protocolo</Button></Tooltip>}</Stack> : null}</Stack></Paper>;
   }
   const motivoRetorno = diagnosticoRetornoReceita(transmissao?.returnXml);
-  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}>{motivoRetorno && <TransmissionErrorAlert erro={motivoRetorno} />}<Typography variant="subtitle1">{rotuloCanal(transmissao)}</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao?.protocol || '—'}`} /><Chip color={transmissao?.receiptNumber ? 'success' : 'warning'} label={transmissao?.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao?.status)} /></Stack><Typography color="text.secondary">Protocolo é a recepção do lote. O recibo é consultado automaticamente a cada 1 minuto.</Typography><Stack spacing={0.5} alignItems="flex-start">{transmissao?.eventXml && <AcaoDownload rotulo="XML do evento" texto="XML do evento enviado à Receita, sem a assinatura digital." onClick={() => baixar(`${transmissao.layout || 'evento'}.xml`, transmissao.eventXml)} />}{transmissao?.batchXml && <AcaoDownload rotulo="XML do lote" texto="XML do lote enviado à Receita, com o evento assinado." onClick={() => baixar('lote.xml', transmissao.batchXml)} />}{transmissao?.returnXml && <AcaoDownload rotulo="XML de retorno" texto="XML de retorno da Receita, da recepção ou da consulta do lote." onClick={() => baixar('retorno.xml', transmissao.returnXml)} />}{transmissao?.csv && <AcaoDownload rotulo="CSV" texto="CSV de origem usado na geração ou conversão do evento." onClick={() => baixar(`${transmissao.layout || 'evento'}.csv`, transmissao.csv)} />}{transmissao?.batchId && <AcaoDownload rotulo="PDF do protocolo" texto="PDF com os dados do protocolo em tabela." onClick={baixarPdf} destaque />}</Stack></Stack></Paper>;
+  const semProtocolo = !transmissao?.protocol && (grupoSituacao(transmissao?.status) === 'desconhecido' || grupoSituacao(transmissao?.status) === 'aguardando');
+  return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}>{motivoRetorno && <TransmissionErrorAlert erro={motivoRetorno} />}<Typography variant="subtitle1">{rotuloCanal(transmissao)}</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="info" label={`Protocolo ${transmissao?.protocol || '—'}`} /><Chip color={transmissao?.receiptNumber ? 'success' : 'warning'} label={transmissao?.receiptNumber ? `Recibo ${transmissao.receiptNumber}` : 'Sem recibo ainda'} /><Chip label={rotuloStatusEnvio(transmissao?.status)} /></Stack><Typography color="text.secondary">{semProtocolo ? 'Este lote ainda não tem protocolo de recepção.' : 'Protocolo é a recepção do lote. O recibo é consultado automaticamente a cada 1 minuto.'}</Typography><Stack spacing={0.5} alignItems="flex-start">{transmissao?.eventXml && <AcaoDownload rotulo="XML do evento" texto="XML do evento enviado à Receita, sem a assinatura digital." onClick={() => baixar(`${transmissao.layout || 'evento'}.xml`, transmissao.eventXml)} />}{transmissao?.batchXml && <AcaoDownload rotulo="XML do lote" texto="XML do lote enviado à Receita, com o evento assinado." onClick={() => baixar('lote.xml', transmissao.batchXml)} />}{transmissao?.returnXml && <AcaoDownload rotulo="XML de retorno" texto="XML de retorno da Receita, da recepção ou da consulta do lote." onClick={() => baixar('retorno.xml', transmissao.returnXml)} />}{transmissao?.csv && <AcaoDownload rotulo="CSV" texto="CSV de origem usado na geração ou conversão do evento." onClick={() => baixar(`${transmissao.layout || 'evento'}.csv`, transmissao.csv)} />}{transmissao?.batchId && <AcaoDownload rotulo="PDF do protocolo" texto="PDF com os dados do protocolo em tabela." onClick={baixarPdf} destaque />}</Stack></Stack></Paper>;
 }
 
 function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, master, resumo, onVerHistorico, onSituacaoAtualizada, entidadeNome, filtroInicial }) {
@@ -1059,6 +1066,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
   const [segundosBloqueio, setSegundosBloqueio] = useState(0);
   const bloqueioAte = useRef(0);
   const [detalhe, setDetalhe] = useState();
+  const [reenviando, setReenviando] = useState(false);
   const [tentativas, setTentativas] = useState([]);
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
@@ -1123,6 +1131,20 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
     }, 60000);
     return () => clearInterval(timer);
   }, [uid, eid, resumo]);
+  async function reenviar(linha) {
+    setReenviando(true);
+    try {
+      const response = await api.post(`/api/transmissions/${linha.batchId}/reenviar`, {}, { headers: cabecalhos });
+      if (response.data?.transmissao) setDetalhe(response.data.transmissao);
+      setMessage(response.data?.mensagem || 'Lote reenviado.');
+      await carregar();
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Falha ao reenviar o lote');
+      try { await abrir(linha); } catch { setDetalhe(linha); }
+    } finally {
+      setReenviando(false);
+    }
+  }
   async function abrir(linha) {
     const response = await api.get(`/api/transmissions/${linha.batchId}`, { headers: cabecalhos });
     setDetalhe(response.data);
@@ -1203,6 +1225,7 @@ function PainelTransmissoes({ api, uid, eid, setMessage, layout, reloadToken, ma
         <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ wordBreak: 'break-all' }}>Protocolo: {detalhe?.protocol || '—'}</Typography>{detalhe?.protocol && <Button size="small" onClick={() => copiarTexto(detalhe.protocol, setMessage)}>Copiar</Button>}</Stack>
         <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ wordBreak: 'break-all' }}>Recibo: {detalhe?.receiptNumber || '—'}</Typography>{detalhe?.receiptNumber && <Button size="small" onClick={() => copiarTexto(detalhe.receiptNumber, setMessage)}>Copiar</Button>}</Stack>
         <Stack direction="row" spacing={1} alignItems="center"><Chip sx={{ alignSelf: 'flex-start' }} color={grupoSituacao(detalhe?.status) === 'aceita' ? 'success' : grupoSituacao(detalhe?.status) === 'erro' ? 'error' : 'warning'} label={rotuloStatusEnvio(detalhe?.status)} />{grupoSituacao(detalhe?.status) === 'aguardando' ? <BotaoInfoReenvio /> : null}</Stack>
+        {podeReenviar(detalhe) ? <Stack spacing={1}><Typography color="text.secondary">Este lote não tem protocolo. O reenvio usa o mesmo XML assinado e o mesmo identificador.</Typography><Button variant="contained" disabled={reenviando} onClick={() => reenviar(detalhe)}>{reenviando ? 'Reenviando…' : 'Reenviar este lote'}</Button></Stack> : null}
         <Typography variant="subtitle2">Histórico de processamento</Typography>
         {!tentativas.length && <Typography color="text.secondary">Nenhuma tentativa registrada.</Typography>}
         {tentativas.map(item => <Typography key={item.id} color="text.secondary">{formatarDataEnvio(item.startedAt)} — tentativa {item.attempt} — {item.outcome}</Typography>)}

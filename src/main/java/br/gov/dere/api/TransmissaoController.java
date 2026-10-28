@@ -4,6 +4,7 @@ import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.transmissao.ApresentacaoErroTransmissao;
 import br.gov.dere.application.transmissao.FalhaTransmissaoException;
 import br.gov.dere.application.transmissao.ProtocoloPdf;
+import br.gov.dere.application.transmissao.ReenvioLoteNaoTransmitido;
 import br.gov.dere.application.transmissao.RequisicaoConsultaProtocolo;
 import br.gov.dere.application.transmissao.RequisicaoEnvioSimulado;
 import br.gov.dere.application.transmissao.TransmissaoSimuladaService;
@@ -35,16 +36,19 @@ public class TransmissaoController {
   private final DereEventRepository events;
   private final AccessService access;
   private final TransmissaoSimuladaService simulated;
+  private final ReenvioLoteNaoTransmitido reenvio;
 
   public TransmissaoController(
       DereTentativaTransmissaoRepository repository,
       DereEventRepository events,
       AccessService access,
-      TransmissaoSimuladaService simulated) {
+      TransmissaoSimuladaService simulated,
+      ReenvioLoteNaoTransmitido reenvio) {
     this.repository = repository;
     this.events = events;
     this.access = access;
     this.simulated = simulated;
+    this.reenvio = reenvio;
   }
 
   @PostMapping("/simulate")
@@ -106,6 +110,15 @@ public class TransmissaoController {
       @RequestHeader("X-User-Id") Long userId,
       @RequestHeader("X-Entity-Id") Long entityId) {
     return simulated.detalhe(userId, entityId, batchId);
+  }
+
+  @PostMapping("/{batchId}/reenviar")
+  public Map<String, Object> reenviar(
+      @PathVariable Long batchId,
+      @RequestHeader("X-User-Id") Long userId,
+      @RequestHeader("X-Entity-Id") Long entityId) {
+    var mensagem = reenvio.reenviarSolicitado(userId, entityId, batchId);
+    return Map.of("mensagem", mensagem, "transmissao", simulated.detalhe(userId, entityId, batchId));
   }
 
   @DeleteMapping("/{batchId}")

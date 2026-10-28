@@ -1,6 +1,7 @@
 package br.gov.dere.application.transmissao;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -18,6 +19,7 @@ import br.gov.dere.application.receita.SituacaoReceitaService;
 import br.gov.dere.domain.EventStatus;
 import br.gov.dere.domain.transmissao.ResultadoEnvio;
 import br.gov.dere.integration.receita.ExcecaoTransmissaoGoverno;
+import org.springframework.web.server.ResponseStatusException;
 import br.gov.dere.persistence.DereBatchEntity;
 import br.gov.dere.persistence.DereBatchRepository;
 import br.gov.dere.persistence.DereEventEntity;
@@ -114,6 +116,40 @@ class ReenvioLoteNaoTransmitidoTest {
     verify(cenario.government, times(1)).submit(any(), any());
   }
 
+  @Test
+  void botaoReenviaResultadoDesconhecidoComOMesmoId() {
+    var cenario = cenario(true, true);
+    cenario.batch.resultadoDesconhecido();
+    cenario.evento.resultadoDesconhecido();
+    when(cenario.government.submit("<lote/>", "EVT-1")).thenReturn(new ResultadoEnvio("2.202610.9", "1", "<ok/>", 201));
+    var mensagem = cenario.job.reenviarSolicitado(1L, 8L, 4L);
+    assertEquals(EventStatus.PROCESSING, cenario.batch.getStatus());
+    assertEquals("2.202610.9", cenario.batch.getProtocol());
+    assertTrue(mensagem.contains("mesmo identificador"));
+    verify(cenario.government).submit("<lote/>", "EVT-1");
+  }
+
+  @Test
+  void botaoComReceitaForaEntraNaFilaSemPost() {
+    var cenario = cenario(true, false);
+    cenario.batch.resultadoDesconhecido();
+    cenario.evento.resultadoDesconhecido();
+    var mensagem = cenario.job.reenviarSolicitado(1L, 8L, 4L);
+    assertEquals(EventStatus.AGUARDANDO_ENVIO, cenario.batch.getStatus());
+    assertEquals(EventStatus.AGUARDANDO_ENVIO, cenario.evento.getStatus());
+    assertTrue(mensagem.contains("aguardando"));
+    verify(cenario.government, never()).submit(any(), any());
+  }
+
+  @Test
+  void botaoRecusaLoteQueJaTemProtocolo() {
+    var cenario = cenario(true, true);
+    cenario.batch.received("2.202610.1");
+    var erro = assertThrows(ResponseStatusException.class, () -> cenario.job.reenviarSolicitado(1L, 8L, 4L));
+    assertEquals(409, erro.getStatusCode().value());
+    verify(cenario.government, never()).submit(any(), any());
+  }
+
   private static Cenario cenario(boolean adaptadorReal, boolean tokenLiberado) {
     var batch = new DereBatchEntity("<lote/>");
     batch.persistId(4L);
@@ -151,7 +187,7 @@ class ReenvioLoteNaoTransmitidoTest {
     when(attempts.findTopByEventIdAndOperationOrderByAttemptDesc(any(), any())).thenReturn(Optional.empty());
     when(attempts.save(any())).thenAnswer(inv -> inv.getArgument(0));
     var job = new ReenvioLoteNaoTransmitido(batches, events, attempts, integracao, situacao, government,
-        new ArmazenamentoArtefatoTransmissao(), importacao, TransacaoIsolada.direta());
+        new ArmazenamentoArtefatoTransmissao(), importacao, mock(br.gov.dere.application.access.AccessService.class), TransacaoIsolada.direta());
     return new Cenario(job, batch, evento, government, situacao, importacao);
   }
 

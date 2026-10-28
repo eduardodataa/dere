@@ -1,5 +1,6 @@
 package br.gov.dere.application.transmissao;
 
+import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import br.gov.dere.application.d1001.D1001ImportService;
 import br.gov.dere.application.receita.SituacaoReceitaService;
@@ -18,8 +19,10 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ReenvioLoteNaoTransmitido {
@@ -35,6 +38,7 @@ public class ReenvioLoteNaoTransmitido {
   private final TransmissaoGovernoPort government;
   private final ArmazenamentoArtefatoTransmissao artefatos;
   private final D1001ImportService importD1001;
+  private final AccessService access;
   private final TransacaoIsolada transacao;
 
   public ReenvioLoteNaoTransmitido(
@@ -46,6 +50,7 @@ public class ReenvioLoteNaoTransmitido {
       @Qualifier("httpTransmissaoGovernoAdapter") TransmissaoGovernoPort government,
       ArmazenamentoArtefatoTransmissao artefatos,
       D1001ImportService importD1001,
+      AccessService access,
       TransacaoIsolada transacao) {
     this.batches = batches;
     this.events = events;
@@ -55,7 +60,60 @@ public class ReenvioLoteNaoTransmitido {
     this.government = government;
     this.artefatos = artefatos;
     this.importD1001 = importD1001;
+    this.access = access;
     this.transacao = transacao;
+  }
+
+  public String reenviarSolicitado(Long userId, Long entityId, Long batchId) {
+    access.assertAccess(userId, entityId);
+    if (!integracao.current().realAdapterEnabled()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "O reenvio real está desligado neste ambiente.");
+    }
+    var recusa = transacao.executar(() -> motivoRecusa(entityId, batchId));
+    if ("ausente".equals(recusa)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado");
+    if ("outra".equals(recusa)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lote de outra entidade");
+    if (recusa != null) throw new ResponseStatusException(HttpStatus.CONFLICT, textoRecusa(recusa));
+    if (!situacao.atual().envioLiberado()) {
+      transacao.executar(() -> colocarNaFila(batchId));
+      return "A Receita ainda não entregou o token. O lote ficou aguardando e será enviado com o mesmo identificador quando ela voltar.";
+    }
+    Reserva reserva;
+    try {
+      reserva = transacao.executar(() -> reservarManual(batchId));
+    } catch (RuntimeException ex) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Não foi possível reservar o lote para reenvio.");
+    }
+    if (reserva == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "O lote já está em envio ou não tem o XML gravado.");
+    try {
+      var resultado = government.submit(reserva.loteXml(), reserva.identificador());
+      if (resultado == null || resultado.protocol() == null || resultado.protocol().isBlank()) {
+        var corpo = resultado == null ? "" : resultado.responseBody();
+        transacao.executar(() -> encerrarDesconhecido(batchId, corpo));
+        return "O envio saiu, mas a Receita não devolveu protocolo. Este identificador não será repetido sozinho.";
+      }
+      transacao.executar(() -> concluir(batchId, resultado));
+      gravarCadastro(reserva, batchId);
+      return "Lote reenviado com o mesmo identificador. O protocolo foi registrado.";
+    } catch (EnvioNaoIniciadoException ex) {
+      situacao.registrarIndisponivel();
+      transacao.executar(() -> adiar(batchId));
+      return "O lote ainda não saiu. Ele será enviado com o mesmo identificador quando a Receita voltar.";
+    } catch (ExcecaoTransmissaoGoverno ex) {
+      if (ex.statusCode() == 429) situacao.registrarIndisponivel();
+      if (duplicidade(ex.responseBody())) {
+        transacao.executar(() -> encerrarDesconhecido(batchId, ex.responseBody()));
+        return "A Receita indicou que este identificador já existe. O lote fica para conciliação e não será enviado de novo.";
+      }
+      if (recusaDefinitiva(ex)) {
+        transacao.executar(() -> rejeitar(batchId, ex));
+        return "A Receita recusou este identificador. O lote não será enviado de novo.";
+      }
+      transacao.executar(() -> encerrarDesconhecido(batchId, ex.responseBody()));
+      return "O envio saiu, mas o protocolo não voltou. Este identificador não será repetido sozinho.";
+    } catch (RuntimeException ex) {
+      transacao.executar(() -> encerrarDesconhecido(batchId, ex.getMessage()));
+      return "O envio saiu, mas o protocolo não voltou. Este identificador não será repetido sozinho.";
+    }
   }
 
   @Scheduled(fixedDelayString = "${dere.transmission.poll-delay-ms:30000}")
@@ -104,11 +162,65 @@ public class ReenvioLoteNaoTransmitido {
     }
     transacao.executar(() -> concluir(batchId, resultado));
     if (!"D-1001".equals(reserva.leiaute())) return;
+    gravarCadastro(reserva, batchId);
+  }
+
+  private void gravarCadastro(Reserva reserva, Long batchId) {
+    if (!"D-1001".equals(reserva.leiaute())) return;
     try {
       importD1001.persistValidatedXml(reserva.userId(), reserva.entityId(), reserva.arquivo(), reserva.xmlEvento());
     } catch (RuntimeException ex) {
       log.warn("lote {} aceito na recepção sem gravar o cadastro local: {}", batchId, ex.toString());
     }
+  }
+
+  private Reserva reservarManual(Long batchId) {
+    var batch = batches.findById(batchId).orElse(null);
+    var evento = evento(batchId);
+    if (batch == null || evento == null) return null;
+    if (batch.getStatus() == EventStatus.RESULTADO_DESCONHECIDO) {
+      evento.aguardandoEnvio();
+      batch.aguardandoEnvio();
+      events.save(evento);
+      batches.save(batch);
+    }
+    return reservar(batchId);
+  }
+
+  private Void colocarNaFila(Long batchId) {
+    var batch = batches.findById(batchId).orElse(null);
+    var evento = evento(batchId);
+    if (batch == null || evento == null) return null;
+    if (batch.getProtocol() != null && !batch.getProtocol().isBlank()) return null;
+    if (batch.getStatus() != EventStatus.RESULTADO_DESCONHECIDO && batch.getStatus() != EventStatus.AGUARDANDO_ENVIO) return null;
+    evento.aguardandoEnvio();
+    batch.aguardandoEnvio();
+    events.save(evento);
+    batches.save(batch);
+    return null;
+  }
+
+  private String motivoRecusa(Long entityId, Long batchId) {
+    var batch = batches.findById(batchId).orElse(null);
+    var evento = evento(batchId);
+    if (batch == null || evento == null) return "ausente";
+    if (batch.getEntityId() != null && !batch.getEntityId().equals(entityId)) return "outra";
+    if (evento.getEntityId() != null && !evento.getEntityId().equals(entityId)) return "outra";
+    if (evento.isSimulated()) return "simulado";
+    if (batch.getProtocol() != null && !batch.getProtocol().isBlank()) return "protocolo";
+    if (batch.getStatus() != EventStatus.RESULTADO_DESCONHECIDO && batch.getStatus() != EventStatus.AGUARDANDO_ENVIO) return "status";
+    var xml = artefatos.ler(batch.getRequestXml());
+    if (xml == null || xml.isBlank()) return "xml";
+    return null;
+  }
+
+  private static String textoRecusa(String codigo) {
+    return switch (codigo) {
+      case "simulado" -> "Lote simulado não é reenviado à Receita.";
+      case "protocolo" -> "Este lote já tem protocolo. A consulta segue sozinha.";
+      case "xml" -> "O XML assinado deste lote não está gravado.";
+      default -> "Este lote não pode ser reenviado.";
+    };
   }
 
   private Reserva reservar(Long batchId) {
