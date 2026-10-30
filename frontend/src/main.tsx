@@ -507,19 +507,21 @@ function PainelSituacaoReceita({ situacao, segundos }) {
     return undefined;
   }, [situacao]);
   if (!situacao) return <Alert severity="info">Consultando a Receita Federal antes do envio…</Alert>;
-  const severidade = situacao.codigo === 'DISPONIVEL' ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
+  const online = situacao.codigo === 'DISPONIVEL';
+  const severidade = online ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
   const relogio = segundos > 0 ? ` Próxima consulta em ${formatarRelogio(segundos)}.` : '';
   const aviso = avisoSituacao(situacao);
   const linhas = linhasDetalheSituacao(situacao);
   return <Alert className={pulso ? 'painel-situacao-atualizado' : undefined} severity={severidade} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
-    <AlertTitle>Situação da Receita Federal</AlertTitle>
+    <AlertTitle>{online ? 'Situação da Receita Federal: Online' : 'Situação da Receita Federal'}</AlertTitle>
     {atualizadoEm ? <Typography className="aviso-atualizacao" variant="body2">Consulta atualizada às {formatarInstante(atualizadoEm)}.</Typography> : null}
-    <Typography>{situacao.mensagem}</Typography>
+    {online ? <Typography>A conexão foi confirmada.</Typography> : <Typography>{situacao.mensagem}</Typography>}
     {aviso ? <Typography variant="body2" sx={{ mt: 0.5 }}>{aviso}</Typography> : null}
-    {situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}
+    {!online && situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}
     <Button color="inherit" size="small" onClick={() => setAberto(valor => !valor)} sx={{ mt: 1, px: 0 }}>{aberto ? 'Ocultar detalhes' : 'Exibir mais detalhes'}</Button>
     <Collapse in={aberto}>
       <Stack spacing={0.5} sx={{ mt: 1.5, borderTop: 1, borderColor: 'divider', pt: 1.5 }}>
+        {online ? <Typography variant="body2">{situacao.mensagem}</Typography> : null}
         {linhas.map(([rotulo, valor]) => <Typography key={rotulo} variant="body2">{rotulo}: {valor}</Typography>)}
       </Stack>
     </Collapse>
