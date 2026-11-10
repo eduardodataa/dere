@@ -47,7 +47,7 @@ abstract class IntegrationTestSupport {
     users.deleteAll();
     entities.deleteAll();
     var entity = entities.save(new DereEntityEntity("01914904", "Entidade IT DeRE"));
-    var master = access.create("eduardo", "eduardo86", "Eduardo IT");
+    var master = access.create("eduardo", "eduardo86", "Eduardo IT", "eduardo@example.com");
     master.setMaster(true);
     master.getEntities().add(entity);
     master = users.save(master);

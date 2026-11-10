@@ -237,7 +237,7 @@ class CorrecoesEnvioAcessoIntegrationTest extends IntegrationTestSupport {
   }
 
   private long operador() {
-    return access.create("operador-" + System.nanoTime(), "segredo", "Operador").getId();
+    return access.create("operador-" + System.nanoTime(), "segredo", "Operador", "operador@example.com").getId();
   }
 
   private RequestPostProcessor sessaoDe(long userId) {

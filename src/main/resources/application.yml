@@ -32,3 +32,11 @@ dere:
   auth:
     client-id: ${DERE_CLIENT_ID:}
     client-secret: ${DERE_CLIENT_SECRET:}
+  mail:
+    from-name: ${DERE_MAIL_FROM_NAME:DeRE}
+    from-email: ${DERE_MAIL_FROM_EMAIL:noreply@dataa.com.br}
+notificacoes:
+  url: ${NOTIFICACOES_URL:}
+  api:
+    username: ${NOTIFICACOES_API_USERNAME:}
+    password: ${NOTIFICACOES_API_PASSWORD:}

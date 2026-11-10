@@ -52,7 +52,8 @@ public class FiltroAutenticacao extends OncePerRequestFilter {
     if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
     var caminho = caminho(request);
     return ("GET".equalsIgnoreCase(request.getMethod()) && "/api/ambiente".equals(caminho))
-        || ("POST".equalsIgnoreCase(request.getMethod()) && "/api/auth/login".equals(caminho));
+        || ("POST".equalsIgnoreCase(request.getMethod()) && "/api/auth/login".equals(caminho))
+        || ("POST".equalsIgnoreCase(request.getMethod()) && "/api/auth/recuperar-senha".equals(caminho));
   }
 
   private static String caminho(HttpServletRequest request) {

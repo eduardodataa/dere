@@ -20,18 +20,20 @@ class AdministrationIntegrationTest extends IntegrationTestSupport {
     var criado = autenticado(post("/api/admin/users")
             .header("X-User-Id", masterId)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"login\":\"operador\",\"name\":\"Operador\",\"password\":\"segredo\",\"master\":false}"))
+            .content("{\"login\":\"operador\",\"name\":\"Operador\",\"email\":\"operador@example.com\",\"password\":\"segredo\",\"master\":false}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.login").value("operador"))
+        .andExpect(jsonPath("$.email").value("operador@example.com"))
         .andReturn();
     var id = com.jayway.jsonpath.JsonPath.read(criado.getResponse().getContentAsString(), "$.id");
 
     autenticado(put("/api/admin/users/" + id)
             .header("X-User-Id", masterId)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"login\":\"operador\",\"name\":\"Operador 2\",\"password\":\"\",\"master\":false}"))
+            .content("{\"login\":\"operador\",\"name\":\"Operador 2\",\"email\":\"operador2@example.com\",\"password\":\"\",\"master\":false}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.name").value("Operador 2"));
+        .andExpect(jsonPath("$.name").value("Operador 2"))
+        .andExpect(jsonPath("$.email").value("operador2@example.com"));
 
     autenticado(delete("/api/admin/users/" + id).header("X-User-Id", masterId))
         .andExpect(status().isOk());

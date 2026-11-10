@@ -49,7 +49,11 @@ public class AdministrationController {
   @Transactional
   public UserDto user(@RequestHeader("X-User-Id") Long actorId, @RequestBody UserRequest request) {
     assertMaster(actorId);
-    var created = access.create(request.login(), request.password(), request.name());
+    if (request.password() == null || request.password().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe a senha.");
+    }
+    var email = br.gov.dere.application.access.ValidadorEmail.obrigatorio(request.email());
+    var created = access.create(request.login(), request.password(), request.name(), email);
     created.setMaster(Boolean.TRUE.equals(request.master()));
     return toDto(users.save(created));
   }
@@ -66,7 +70,13 @@ public class AdministrationController {
     assertMaster(actorId);
     var user = users.findById(id).orElseThrow();
     var password = request.password() == null || request.password().isBlank() ? null : access.encode(request.password());
-    user.update(request.login(), request.name() == null || request.name().isBlank() ? user.getDisplayName() : request.name(), password);
+    var email = request.email() == null || request.email().isBlank()
+        ? user.getEmail()
+        : br.gov.dere.application.access.ValidadorEmail.obrigatorio(request.email());
+    if (email == null || email.isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o e-mail.");
+    }
+    user.update(request.login(), request.name() == null || request.name().isBlank() ? user.getDisplayName() : request.name(), password, email);
     if (request.master() != null) user.setMaster(request.master());
     return toDto(users.save(user));
   }
@@ -204,7 +214,7 @@ public class AdministrationController {
   }
 
   private UserDto toDto(DereUserEntity user) {
-    return new UserDto(user.getId(), user.getLogin(), user.getDisplayName(), user.isMaster());
+    return new UserDto(user.getId(), user.getLogin(), user.getDisplayName(), user.getEmail(), user.isMaster());
   }
 
   private EntityDto toDto(DereEntityEntity entity, List<Long> userIds) {
@@ -219,8 +229,8 @@ public class AdministrationController {
     return entity.getUsers().stream().map(DereUserEntity::getId).sorted().toList();
   }
 
-  public record UserRequest(String login, String password, String name, Boolean master) {}
+  public record UserRequest(String login, String password, String name, String email, Boolean master) {}
   public record EntityRequest(String cnpjRoot, String legalName, List<Long> userIds, String logoBase64, String logoTipo, Boolean removerLogo) {}
-  public record UserDto(Long id, String login, String name, boolean master) {}
+  public record UserDto(Long id, String login, String name, String email, boolean master) {}
   public record EntityDto(Long id, String cnpjRoot, String legalName, List<Long> userIds, boolean temLogo) {}
 }

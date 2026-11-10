@@ -11,6 +11,7 @@ import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import SettingsIcon from '@mui/icons-material/Settings';
 import BusinessIcon from '@mui/icons-material/Business';
 import PeopleIcon from '@mui/icons-material/People';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -53,7 +54,7 @@ function raizCnpj(valor) {
 
 function gravidadeAviso(texto) {
   if (/falha|inválid|obrigatór|informe|erro|unprocessable|recus/i.test(texto)) return 'error';
-  if (/sucesso|salva|excluíd|cadastrad|atualizad|armazenad|enviado\.|validado/i.test(texto)) return 'success';
+  if (/sucesso|salva|excluíd|cadastrad|atualizad|armazenad|enviado\.|enviamos|validado|provisória/i.test(texto)) return 'success';
   return 'info';
 }
 
@@ -120,6 +121,7 @@ const PAGINA_VISAO = 'Visão geral';
 const PAGINA_ENVIO = 'Enviar declaração';
 const PAGINA_HISTORICO = 'Histórico de envios';
 const PAGINA_CERTIFICADO = 'Certificado digital';
+const PAGINA_PERFIL = 'Perfil';
 const TIPOS_DECLARACAO = [
   ['D-1001', 'D-1001 — Informações do contribuinte'],
   ['D-1011', 'D-1011 — PGCC'],
@@ -290,6 +292,9 @@ function App() {
   const [password, setPassword] = useState('');
   const [senhaVisivel, setSenhaVisivel] = useState(false);
   const [entrando, setEntrando] = useState(false);
+  const [recuperando, setRecuperando] = useState(false);
+  const [telaRecuperacao, setTelaRecuperacao] = useState(false);
+  const [emailRecuperacao, setEmailRecuperacao] = useState('');
   const [capsLock, setCapsLock] = useState(false);
   const [page, setPage] = useState(PAGINA_VISAO);
   const [abaConfiguracao, setAbaConfiguracao] = useState(0);
@@ -354,6 +359,36 @@ function App() {
       setEntrando(false);
     }
   }
+  async function enviarRecuperacao(event) {
+    event?.preventDefault?.();
+    if (recuperando) return;
+    if (!login.trim() || !emailRecuperacao.trim()) { setMessage('Informe o login e o e-mail.'); return; }
+    setRecuperando(true);
+    setMessage('');
+    try {
+      const response = await api.post('/api/auth/recuperar-senha', { login: login.trim(), email: emailRecuperacao.trim() });
+      setTelaRecuperacao(false);
+      setEmailRecuperacao('');
+      setPassword('');
+      setMessage(`Enviamos uma senha provisória para ${response.data.emailMascarado}.`);
+    } catch (error) {
+      if (!error.response) setMessage('Não foi possível enviar o e-mail. Tente novamente.');
+      else if (error.response.status === 429) setMessage(error.response.data?.message || 'Muitas tentativas. Tente novamente em alguns minutos.');
+      else setMessage(error.response.data?.message || error.response.data?.detail || 'Login ou e-mail inválidos.');
+    } finally {
+      setRecuperando(false);
+    }
+  }
+  function abrirRecuperacao() {
+    setTelaRecuperacao(true);
+    setPassword('');
+    setMessage('');
+  }
+  function voltarLogin() {
+    setTelaRecuperacao(false);
+    setEmailRecuperacao('');
+    setMessage('');
+  }
   function signOut() {
     tokenSessao = null;
     delete api.defaults.headers.common.Authorization;
@@ -362,6 +397,8 @@ function App() {
     setMaster(false);
     setPassword('');
     setMessage('');
+    setTelaRecuperacao(false);
+    setEmailRecuperacao('');
     setPage(PAGINA_VISAO);
   }
   const entidadeTravada = !master && entities.length <= 1;
@@ -379,14 +416,19 @@ function App() {
     } catch (error) { setMessage(error.response?.data?.message || 'Falha ao excluir certificado.'); }
   }
 
-  if (!uid) return <Box className="login-shell" component="main"><Box className="login-tema"><BotaoTema /></Box><Stack className="login-bloco" component="form" spacing={2} alignItems="center" onSubmit={signIn}><Card className="login-card"><CardContent><Stack spacing={2.5} alignItems="center"><img className="selo-login" src={seloDere} alt="DeRE" /><Box sx={{ textAlign: 'center', width: '100%' }}><Typography variant="h5">Bem-vindo à DeRE</Typography><Typography color="text.secondary">Declaração de Regimes Específicos</Typography></Box><Typography variant="subtitle1" sx={{ alignSelf: 'stretch' }}>Acesse sua conta</Typography><TextField label="Usuário" name="username" autoComplete="username" autoFocus fullWidth value={login} onChange={event => setLogin(event.target.value)} disabled={entrando} /><TextField label="Senha" name="password" autoComplete="current-password" fullWidth type={senhaVisivel ? 'text' : 'password'} value={password} disabled={entrando} onChange={event => setPassword(event.target.value)} onKeyUp={atualizarCapsLock} onKeyDown={atualizarCapsLock} helperText={capsLock ? 'Caps Lock está ativado.' : ' '} FormHelperTextProps={{ role: capsLock ? 'status' : undefined }} slotProps={{ input: { endAdornment: <InputAdornment position="end"><IconButton aria-label={senhaVisivel ? 'Ocultar senha' : 'Mostrar senha'} edge="end" onClick={() => setSenhaVisivel(atual => !atual)} disabled={entrando}>{senhaVisivel ? <VisibilityOffIcon /> : <VisibilityIcon />}</IconButton></InputAdornment> } }} /><Button type="submit" variant="contained" size="large" fullWidth disabled={entrando} startIcon={entrando ? <CircularProgress size={18} color="inherit" /> : null}>{entrando ? 'Entrando…' : 'Entrar'}</Button>{message && <Alert severity="error" sx={{ alignSelf: 'stretch' }}>{message}</Alert>}</Stack></CardContent></Card><Typography variant="caption" color="text.secondary">Data A · Soluções em Previdência</Typography></Stack></Box>;
+  if (!uid) {
+    if (telaRecuperacao) {
+      return <Box className="login-shell" component="main"><Box className="login-tema"><BotaoTema /></Box><Stack className="login-bloco" component="form" spacing={2} alignItems="center" onSubmit={enviarRecuperacao}><Card className="login-card"><CardContent><Stack spacing={2.5} alignItems="center"><img className="selo-login" src={seloDere} alt="DeRE" /><Box sx={{ textAlign: 'center', width: '100%' }}><Typography variant="h5">Esqueci minha senha</Typography><Typography color="text.secondary">Informe o login e o e-mail cadastrados</Typography></Box><TextField label="Login" name="username" autoComplete="username" autoFocus fullWidth value={login} onChange={event => setLogin(event.target.value)} disabled={recuperando} /><TextField label="E-mail" name="email" type="email" autoComplete="email" fullWidth value={emailRecuperacao} onChange={event => setEmailRecuperacao(event.target.value)} disabled={recuperando} /><Stack direction="row" spacing={1.5} sx={{ alignSelf: 'stretch' }}><Button type="button" variant="outlined" fullWidth disabled={recuperando} onClick={voltarLogin}>Voltar</Button><Button type="submit" variant="contained" fullWidth disabled={recuperando} startIcon={recuperando ? <CircularProgress size={18} color="inherit" /> : null}>{recuperando ? 'Enviando…' : 'Enviar'}</Button></Stack>{message && <Alert severity="error" sx={{ alignSelf: 'stretch' }}>{message}</Alert>}</Stack></CardContent></Card><Typography variant="caption" color="text.secondary">Data A · Soluções em Previdência</Typography></Stack></Box>;
+    }
+    return <Box className="login-shell" component="main"><Box className="login-tema"><BotaoTema /></Box><Stack className="login-bloco" component="form" spacing={2} alignItems="center" onSubmit={signIn}><Card className="login-card"><CardContent><Stack spacing={2.5} alignItems="center"><img className="selo-login" src={seloDere} alt="DeRE" /><Box sx={{ textAlign: 'center', width: '100%' }}><Typography variant="h5">Bem-vindo à DeRE</Typography><Typography color="text.secondary">Declaração de Regimes Específicos</Typography></Box><Typography variant="subtitle1" sx={{ alignSelf: 'stretch' }}>Acesse sua conta</Typography><TextField label="Usuário" name="username" autoComplete="username" autoFocus fullWidth value={login} onChange={event => setLogin(event.target.value)} disabled={entrando} /><TextField label="Senha" name="password" autoComplete="current-password" fullWidth type={senhaVisivel ? 'text' : 'password'} value={password} disabled={entrando} onChange={event => setPassword(event.target.value)} onKeyUp={atualizarCapsLock} onKeyDown={atualizarCapsLock} helperText={capsLock ? 'Caps Lock está ativado.' : ' '} FormHelperTextProps={{ role: capsLock ? 'status' : undefined }} slotProps={{ input: { endAdornment: <InputAdornment position="end"><IconButton aria-label={senhaVisivel ? 'Ocultar senha' : 'Mostrar senha'} edge="end" onClick={() => setSenhaVisivel(atual => !atual)} disabled={entrando}>{senhaVisivel ? <VisibilityOffIcon /> : <VisibilityIcon />}</IconButton></InputAdornment> } }} /><Button type="submit" variant="contained" size="large" fullWidth disabled={entrando} startIcon={entrando ? <CircularProgress size={18} color="inherit" /> : null}>{entrando ? 'Entrando…' : 'Entrar'}</Button><Button type="button" variant="text" fullWidth disabled={entrando} onClick={abrirRecuperacao}>Esqueci minha senha</Button>{message && <Alert severity={gravidadeAviso(message)} sx={{ alignSelf: 'stretch' }}>{message}</Alert>}</Stack></CardContent></Card><Typography variant="caption" color="text.secondary">Data A · Soluções em Previdência</Typography></Stack></Box>;
+  }
 
-  const menu = [PAGINA_VISAO, PAGINA_ENVIO, PAGINA_HISTORICO, PAGINA_CERTIFICADO, ...(master ? ['Configurações', 'Entidades', 'Usuários'] : [])];
+  const menu = [PAGINA_VISAO, PAGINA_ENVIO, PAGINA_HISTORICO, PAGINA_CERTIFICADO, PAGINA_PERFIL, ...(master ? ['Configurações', 'Entidades', 'Usuários'] : [])];
   const menuExibido = menu.filter(item => item === 'Configurações' || menusVisiveis[item] !== false);
   const secoes = [
     { titulo: '', itens: [{ id: PAGINA_VISAO, Icone: GridViewIcon }] },
     { titulo: 'Declarações', itens: [{ id: PAGINA_ENVIO, Icone: SendIcon }, { id: PAGINA_HISTORICO, Icone: FactCheckIcon }] },
-    { titulo: 'Configurações', itens: [{ id: PAGINA_CERTIFICADO, Icone: VerifiedUserIcon }] },
+    { titulo: 'Configurações', itens: [{ id: PAGINA_CERTIFICADO, Icone: VerifiedUserIcon }, { id: PAGINA_PERFIL, Icone: ManageAccountsIcon }] },
     ...(master ? [{ titulo: 'Administração', itens: [{ id: 'Configurações', Icone: SettingsIcon }, { id: 'Entidades', Icone: BusinessIcon }, { id: 'Usuários', Icone: PeopleIcon }] }] : []),
   ].map(secao => ({ ...secao, itens: secao.itens.filter(item => menuExibido.includes(item.id)) })).filter(secao => secao.itens.length);
   function alternarMenu(item, marcado) {
@@ -429,6 +471,7 @@ function App() {
       {page === PAGINA_VISAO ? <Dashboard api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} master={master} certificados={certificados} onNova={() => { setPage(PAGINA_ENVIO); setMessage(''); }} onPendencias={() => abrirHistorico('', 'PENDENCIAS')} /> : null}
       <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} onCredenciais={abrirCredenciais} /></Box>
       {page === PAGINA_HISTORICO ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} entidadeNome={currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : ''} filtroInicial={filtroHistorico} /> : null}
+      {page === PAGINA_PERFIL ? <PainelPerfil api={api} setMessage={setMessage} /> : null}
       {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
     </Box>
   </Box>;
@@ -1320,16 +1363,63 @@ function ResumoResultado({ resultado, aoBaixar, aoRelatorio, rotuloDownload = 'B
   const linhasComProblema = resultado.linhasComProblema ?? new Set(criticas.map(item => item.linha).filter(Boolean)).size;
   return <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={1}><Typography variant="subtitle1">Críticas da validação</Typography><Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap><Chip color="error" label="Com críticas" /><Chip label={`${resultado.totalLinhas ?? resultado.quantidadeArquivos ?? 1} linha(s)`} /><Chip label={`${linhasComProblema} linha(s) com problema`} /><Chip label={`${criticas.length} crítica(s)`} /></Stack>{criticas.length > 0 && aoRelatorio && <Box><Button variant="contained" onClick={aoRelatorio}>Baixar relatório de críticas</Button></Box>}{aoBaixar && <Button variant="outlined" onClick={aoBaixar}>{rotuloDownload}</Button>}<Box className="tabela-criticas-wrap"><Box component="table" className="tabela-criticas"><Box component="thead"><Box component="tr">{['Linha', 'Coluna', 'Tipo', 'Encontrado', 'Esperado', 'Como corrigir'].map(titulo => <Box component="th" key={titulo}>{titulo}</Box>)}</Box></Box><Box component="tbody">{criticas.map((item, indice) => <Box component="tr" key={indice}><Box component="td">{item.linha || '—'}</Box><Box component="td">{item.coluna || 'Documento'}</Box><Box component="td"><Chip size="small" color={COR_TIPO[item.tipo] || 'default'} label={item.rotuloTipo || ROTULO_TIPO[item.tipo] || item.tipo} /></Box><Box component="td">{item.valorEncontrado || '—'}</Box><Box component="td">{item.valorEsperado || '—'}</Box><Box component="td">{item.problema}</Box></Box>)}</Box></Box></Box></Stack></Paper>;
 }
+function PainelPerfil({ api, setMessage }) {
+  const [login, setLogin] = useState('');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    api.get('/api/auth/perfil').then(response => {
+      setLogin(response.data.login || '');
+      setEmail(response.data.email || '');
+      setName(response.data.name || '');
+    }).catch(() => setMessage('Falha ao carregar o perfil.'));
+  }, []);
+  async function salvar() {
+    if (!name.trim()) { setMessage('Informe o nome.'); return; }
+    if (newPassword && newPassword !== confirmPassword) { setMessage('A confirmação da nova senha não confere.'); return; }
+    if (newPassword && !currentPassword) { setMessage('Informe a senha atual para alterar a senha.'); return; }
+    setSalvando(true);
+    try {
+      const response = await api.put('/api/auth/perfil', { name: name.trim(), currentPassword: newPassword ? currentPassword : '', newPassword: newPassword || '' });
+      setName(response.data.name || '');
+      setEmail(response.data.email || '');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setMessage('Perfil atualizado com sucesso.');
+    } catch (error) {
+      setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao atualizar o perfil.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">Perfil</Typography><TextField label="Login" value={login} disabled fullWidth /><TextField label="E-mail" value={email || '—'} disabled fullWidth /><TextField label="Nome" value={name} onChange={event => setName(event.target.value)} fullWidth /><TextField label="Senha atual" type="password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} fullWidth /><TextField label="Nova senha" type="password" value={newPassword} onChange={event => setNewPassword(event.target.value)} helperText="Preencha somente se quiser trocar a senha" fullWidth /><TextField label="Confirmar nova senha" type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} fullWidth /><Box><Button variant="contained" onClick={salvar} disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</Button></Box></Stack></CardContent></Card>;
+}
 function UserAdmin({ api, currentUserId, onSelfMaster, setMessage }) {
-  const empty = { id: null, login: '', name: '', password: '', master: false };
+  const empty = { id: null, login: '', name: '', email: '', password: '', master: false };
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(empty);
   const load = async () => setRows((await api.get('/api/admin/users')).data);
   useEffect(() => { load().catch(() => setMessage('Falha ao carregar usuários')); }, []);
-  async function saveMaster(user, value) { await api.put(`/api/admin/users/${user.id}`, { login: user.login, name: user.name, password: '', master: value }); if (user.id === currentUserId) onSelfMaster(value); await load(); setMessage(value ? `${user.login} agora é master` : `${user.login} deixou de ser master`); }
-  async function saveUser() { const body = { login: form.login, name: form.name, password: form.password, master: form.master }; if (form.id) { await api.put(`/api/admin/users/${form.id}`, body); if (form.id === currentUserId) onSelfMaster(form.master); setMessage('Usuário atualizado'); } else { await api.post('/api/admin/users', body); setMessage('Usuário cadastrado'); } setForm(empty); await load(); }
+  async function saveMaster(user, value) { await api.put(`/api/admin/users/${user.id}`, { login: user.login, name: user.name, email: user.email, password: '', master: value }); if (user.id === currentUserId) onSelfMaster(value); await load(); setMessage(value ? `${user.login} agora é master` : `${user.login} deixou de ser master`); }
+  async function saveUser() {
+    if (!form.email.trim()) { setMessage('Informe o e-mail.'); return; }
+    const body = { login: form.login, name: form.name, email: form.email, password: form.password, master: form.master };
+    try {
+      if (form.id) { await api.put(`/api/admin/users/${form.id}`, body); if (form.id === currentUserId) onSelfMaster(form.master); setMessage('Usuário atualizado'); }
+      else { await api.post('/api/admin/users', body); setMessage('Usuário cadastrado'); }
+      setForm(empty);
+      await load();
+    } catch (error) {
+      setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao salvar usuário.');
+    }
+  }
   async function removeUser(user) { await api.delete(`/api/admin/users/${user.id}`); if (form.id === user.id) setForm(empty); await load(); setMessage('Usuário excluído'); }
-  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">{form.id ? `Editar ${form.login}` : 'Novo usuário'}</Typography><Stack direction="row" spacing={2} alignItems="center"><TextField label="Login" value={form.login} onChange={event => setForm({ ...form, login: event.target.value })} /><TextField label="Nome" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /><TextField label={form.id ? 'Nova senha' : 'Senha'} type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} helperText={form.id ? 'Em branco mantém a senha' : ' '} /><Button variant={form.master ? 'contained' : 'outlined'} onClick={() => setForm({ ...form, master: !form.master })}>{form.master ? 'Master' : 'Comum'}</Button><Button variant="contained" onClick={saveUser}>{form.id ? 'Salvar' : 'Cadastrar'}</Button>{form.id && <Button onClick={() => setForm(empty)}>Cancelar</Button>}</Stack><Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}><Box component="thead"><Box component="tr">{['Login', 'Nome', 'Master', 'Ações'].map(title => <Box component="th" key={title} sx={{ textAlign: 'left', py: 1 }}>{title}</Box>)}</Box></Box><Box component="tbody">{rows.map(user => <Box component="tr" key={user.id} sx={{ borderTop: 1, borderColor: 'divider' }}><Box component="td" sx={{ py: 1 }}>{user.login}</Box><Box component="td">{user.name}</Box><Box component="td"><Button size="small" variant={user.master ? 'contained' : 'outlined'} onClick={() => saveMaster(user, !user.master)}>{user.master ? 'Master' : 'Comum'}</Button></Box><Box component="td"><Button size="small" onClick={() => setForm({ id: user.id, login: user.login, name: user.name, password: '', master: user.master })}>Editar</Button><Button size="small" color="error" disabled={user.id === currentUserId} onClick={() => removeUser(user)}>Excluir</Button></Box></Box>)}</Box></Box></Stack></CardContent></Card>;
+  return <Card><CardContent><Stack spacing={2}><Typography variant="h6">{form.id ? `Editar ${form.login}` : 'Novo usuário'}</Typography><Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap><TextField label="Login" value={form.login} onChange={event => setForm({ ...form, login: event.target.value })} /><TextField label="Nome" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /><TextField label="E-mail" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /><TextField label={form.id ? 'Nova senha' : 'Senha'} type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} helperText={form.id ? 'Em branco mantém a senha' : ' '} /><Button variant={form.master ? 'contained' : 'outlined'} onClick={() => setForm({ ...form, master: !form.master })}>{form.master ? 'Master' : 'Comum'}</Button><Button variant="contained" onClick={saveUser}>{form.id ? 'Salvar' : 'Cadastrar'}</Button>{form.id && <Button onClick={() => setForm(empty)}>Cancelar</Button>}</Stack><Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}><Box component="thead"><Box component="tr">{['Login', 'Nome', 'E-mail', 'Master', 'Ações'].map(title => <Box component="th" key={title} sx={{ textAlign: 'left', py: 1 }}>{title}</Box>)}</Box></Box><Box component="tbody">{rows.map(user => <Box component="tr" key={user.id} sx={{ borderTop: 1, borderColor: 'divider' }}><Box component="td" sx={{ py: 1 }}>{user.login}</Box><Box component="td">{user.name}</Box><Box component="td">{user.email || '—'}</Box><Box component="td"><Button size="small" variant={user.master ? 'contained' : 'outlined'} onClick={() => saveMaster(user, !user.master)}>{user.master ? 'Master' : 'Comum'}</Button></Box><Box component="td"><Button size="small" onClick={() => setForm({ id: user.id, login: user.login, name: user.name, email: user.email || '', password: '', master: user.master })}>Editar</Button><Button size="small" color="error" disabled={user.id === currentUserId} onClick={() => removeUser(user)}>Excluir</Button></Box></Box>)}</Box></Box></Stack></CardContent></Card>;
 }
 function lerBase64(arquivo) {
   return new Promise((resolve, reject) => {
