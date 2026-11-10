@@ -153,8 +153,9 @@ function lerMenusVisiveis() {
   }
 }
 
-function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMessage }) {
-  const [aba, setAba] = useState(0);
+function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMessage, abaInicial }) {
+  const [aba, setAba] = useState(abaInicial || 0);
+  useEffect(() => { setAba(abaInicial || 0); }, [abaInicial]);
   const [integracao, setIntegracao] = useState({
     realAdapterEnabled: false,
     mockEnabled: true,
@@ -291,6 +292,7 @@ function App() {
   const [entrando, setEntrando] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [page, setPage] = useState(PAGINA_VISAO);
+  const [abaConfiguracao, setAbaConfiguracao] = useState(0);
   const [canal, setCanal] = useState(ambienteDaUrl);
   const [filtroHistorico, setFiltroHistorico] = useState({ layout: '', situacao: '' });
   const [entities, setEntities] = useState<any[]>([]);
@@ -397,6 +399,11 @@ function App() {
   }
   const currentEntity = entities.find(entity => entity.id === eid);
   const subtitulo = `${currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : 'Entidade não selecionada'} · ${rotuloCanalAmbiente(canal.codigo)}`;
+  function abrirCredenciais() {
+    setAbaConfiguracao(1);
+    setPage('Configurações');
+    setMessage('');
+  }
   function abrirHistorico(layout, situacao) {
     setFiltroHistorico({ layout: layout || '', situacao: situacao || '' });
     setPage(PAGINA_HISTORICO);
@@ -409,7 +416,7 @@ function App() {
       <List>
         {secoes.map(secao => <Box key={secao.titulo || 'inicio'}>
           {secao.titulo ? <Typography className="menu-secao" component="span">{secao.titulo}</Typography> : null}
-          {secao.itens.map(item => <ListItemButton selected={page === item.id} onClick={() => { setPage(item.id); setMessage(''); }} key={item.id}><ListItemIcon><item.Icone fontSize="small" /></ListItemIcon><ListItemText primary={item.id} /></ListItemButton>)}
+          {secao.itens.map(item => <ListItemButton selected={page === item.id} onClick={() => { if (item.id === 'Configurações') setAbaConfiguracao(0); setPage(item.id); setMessage(''); }} key={item.id}><ListItemIcon><item.Icone fontSize="small" /></ListItemIcon><ListItemText primary={item.id} /></ListItemButton>)}
         </Box>)}
       </List>
     </Drawer>
@@ -420,9 +427,9 @@ function App() {
       </Stack>
       {message && <Alert sx={{ mb: 3 }} severity={gravidadeAviso(message)}>{message}</Alert>}
       {page === PAGINA_VISAO ? <Dashboard api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} master={master} certificados={certificados} onNova={() => { setPage(PAGINA_ENVIO); setMessage(''); }} onPendencias={() => abrirHistorico('', 'PENDENCIAS')} /> : null}
-      <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} /></Box>
+      <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} onCredenciais={abrirCredenciais} /></Box>
       {page === PAGINA_HISTORICO ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} entidadeNome={currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : ''} filtroInicial={filtroHistorico} /> : null}
-      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
+      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
     </Box>
   </Box>;
 }
@@ -496,7 +503,7 @@ function complementoErroReceita(erro, situacao, segundos) {
   return `O lote não saiu. O mesmo identificador será reenviado quando a Receita voltar. Próxima consulta em ${formatarRelogio(segundos)}.`;
 }
 
-function PainelSituacaoReceita({ situacao, segundos }) {
+function PainelSituacaoReceita({ situacao, segundos, master, onCredenciais }) {
   const [aberto, setAberto] = useState(false);
   const [pulso, setPulso] = useState(false);
   const [atualizadoEm, setAtualizadoEm] = useState('');
@@ -528,7 +535,10 @@ function PainelSituacaoReceita({ situacao, segundos }) {
     {online ? <Typography>A conexão foi confirmada.</Typography> : <Typography>{situacao.mensagem}</Typography>}
     {aviso ? <Typography variant="body2" sx={{ mt: 0.5 }}>{aviso}</Typography> : null}
     {!online && situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}
-    <Button color="inherit" size="small" onClick={() => setAberto(valor => !valor)} sx={{ mt: 1, px: 0 }}>{aberto ? 'Ocultar detalhes' : 'Exibir mais detalhes'}</Button>
+    <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+      {master ? <Button color="inherit" size="small" onClick={onCredenciais} sx={{ px: 0 }}>Atualizar credenciais</Button> : null}
+      <Button color="inherit" size="small" onClick={() => setAberto(valor => !valor)} sx={{ px: 0 }}>{aberto ? 'Ocultar detalhes' : 'Exibir mais detalhes'}</Button>
+    </Stack>
     <Collapse in={aberto}>
       <Stack spacing={0.5} sx={{ mt: 1.5, borderTop: 1, borderColor: 'divider', pt: 1.5 }}>
         {online ? <Typography variant="body2">{situacao.mensagem}</Typography> : null}
@@ -538,7 +548,7 @@ function PainelSituacaoReceita({ situacao, segundos }) {
   </Alert>;
 }
 
-function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, onHistorico }) {
+function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, onHistorico, onCredenciais }) {
   const [layout, setLayout] = useState('D-1001');
   const [file, setFile] = useState();
   const [uploadResult, setUploadResult] = useState();
@@ -855,7 +865,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     <Button onClick={() => setEtapa(1)} disabled={enviando}>Voltar à validação</Button>
   </Stack>;
   return <Stack spacing={2}>
-    <PainelSituacaoReceita situacao={situacaoReceita} segundos={segundosReceita} />
+    <PainelSituacaoReceita situacao={situacaoReceita} segundos={segundosReceita} master={master} onCredenciais={onCredenciais} />
     <Card><CardContent><Stack spacing={3}>
       <Stepper activeStep={etapa}>
         {['Arquivo', 'Validação', 'Envio'].map((rotulo, indice) => <Step key={rotulo}><StepLabel onClick={() => irPara(indice)} sx={{ cursor: 'pointer' }}>{rotulo}</StepLabel></Step>)}
