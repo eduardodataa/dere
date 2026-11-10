@@ -35,7 +35,21 @@ class ConfiguracoesIntegrationTest extends IntegrationTestSupport {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.clientId").value("cliente-it"))
         .andExpect(jsonPath("$.clientSecretConfigured").value(true))
-        .andExpect(jsonPath("$.limiteUploadMb").value(12));
+        .andExpect(jsonPath("$.limiteUploadMb").value(12))
+        .andExpect(jsonPath("$.validadeCredencial").value(""));
+
+    autenticado(put("/api/settings/integration")
+            .header("X-User-Id", masterId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"validadeCredencial\":\"31/10/2026\"}"))
+        .andExpect(status().isBadRequest());
+
+    autenticado(put("/api/settings/integration")
+            .header("X-User-Id", masterId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"validadeCredencial\":\"2026-10-31\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.validadeCredencial").value("2026-10-31"));
 
     autenticado(put("/api/settings/integration")
             .header("X-User-Id", masterId)

@@ -128,7 +128,7 @@ class TransmissaoSimuladaServiceTest {
     var integration = mock(ConfiguracaoIntegracaoService.class);
     when(integration.current()).thenReturn(new ConfiguracaoIntegracao(
         false, mockEnabled, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
-        "", null, false, "restricted-production", "nota_2026_001", 50));
+        "", null, false, "restricted-production", "nota_2026_001", 50, null));
     return new TransmissaoSimuladaService(integration, mock(TransmissaoGovernoPort.class), access,
         new ServicoValidacaoLeiaute(dependencias, chaves), importD1001, certificates, events,
         mock(br.gov.dere.persistence.DereEventErrorRepository.class), batches, attempts,

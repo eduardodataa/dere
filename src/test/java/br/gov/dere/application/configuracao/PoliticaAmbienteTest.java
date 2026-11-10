@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class PoliticaAmbienteTest {
   private final ConfiguracaoIntegracao base = new ConfiguracaoIntegracao(
       true, false, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
-      "id", "secret", true, "production", "nota_2026_001", 40);
+      "id", "secret", true, "production", "nota_2026_001", 40, "2026-10-31");
 
   @Test
   void stagingSoSimula() {
@@ -18,6 +18,7 @@ class PoliticaAmbienteTest {
     assertFalse(atual.realAdapterEnabled());
     assertTrue(atual.mockEnabled());
     assertEquals(40, atual.limiteUploadMb());
+    assertEquals("2026-10-31", atual.validadeCredencial());
     assertEquals("Ambiente de staging. Os envios são simulados.", PoliticaAmbiente.rodape("staging"));
   }
 
@@ -36,7 +37,7 @@ class PoliticaAmbienteTest {
   void producaoSoProducao() {
     var atual = PoliticaAmbiente.aplicar("producao", new ConfiguracaoIntegracao(
         false, true, PoliticaAmbiente.URL_PRE_PRODUCAO, "https://api.receitafederal.gov.br/token",
-        "id", null, false, "restricted-production", "nota_2026_001", 40));
+        "id", null, false, "restricted-production", "nota_2026_001", 40, "2026-10-31"));
     assertTrue(atual.realAdapterEnabled());
     assertFalse(atual.mockEnabled());
     assertEquals(PoliticaAmbiente.URL_PRODUCAO, atual.baseUrl());

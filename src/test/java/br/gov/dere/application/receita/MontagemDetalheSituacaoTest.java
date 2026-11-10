@@ -70,6 +70,7 @@ class MontagemDetalheSituacaoTest {
         true,
         "restricted-production",
         "nota_2026_001",
-        1);
+        1,
+        null);
   }
 }

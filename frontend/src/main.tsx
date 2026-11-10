@@ -166,6 +166,7 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     environment: 'restricted-production',
     schemaVersion: 'nota_2026_001',
     limiteUploadMb: 50,
+    validadeCredencial: '',
   });
   const [carregando, setCarregando] = useState(false);
   const [implantacao, setImplantacao] = useState('local');
@@ -227,6 +228,7 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     <TextField label="URL do token (Receita Integra)" fullWidth disabled={!master} value={integracao.tokenUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, tokenUrl: event.target.value }))} />
     <TextField label="Client ID" fullWidth disabled={!master} value={integracao.clientId || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientId: event.target.value }))} />
     <TextField label="Client secret" type="password" fullWidth disabled={!master} value={integracao.clientSecret || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientSecret: event.target.value }))} helperText={integracao.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} />
+    <TextField label="Validade da credencial" type="date" fullWidth disabled={!master} value={integracao.validadeCredencial || ''} onChange={event => setIntegracao(atual => ({ ...atual, validadeCredencial: event.target.value }))} helperText="Data do campo Validade no portal do Receita Integra. A Receita não envia essa data na API." slotProps={{ inputLabel: { shrink: true } }} />
     <TextField label="Ambiente" fullWidth disabled={!master || canalTravado} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
     <TextField label="Versão de schema" fullWidth disabled={!master} value={integracao.schemaVersion || ''} onChange={event => setIntegracao(atual => ({ ...atual, schemaVersion: event.target.value }))} />
     <TextField label="Limite de upload (MB)" type="number" fullWidth disabled={!master} value={integracao.limiteUploadMb ?? 50} onChange={event => setIntegracao(atual => ({ ...atual, limiteUploadMb: event.target.value === '' ? '' : Number(event.target.value) }))} helperText="XML avulso e ZIP já descompactado. O máximo é 50 MB." slotProps={{ htmlInput: { min: 1, max: 50, step: 1 } }} />
@@ -450,6 +452,12 @@ function situacaoReceitaIndisponivel() {
   };
 }
 
+function formatarDataIso(valor) {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor || '');
+  if (!partes) return 'não informada';
+  return `${partes[3]}/${partes[2]}/${partes[1]}`;
+}
+
 function formatarInstante(valor) {
   const data = new Date(valor);
   if (Number.isNaN(data.getTime())) return valor || '—';
@@ -508,13 +516,15 @@ function PainelSituacaoReceita({ situacao, segundos }) {
   }, [situacao]);
   if (!situacao) return <Alert severity="info">Consultando a Receita Federal antes do envio…</Alert>;
   const online = situacao.codigo === 'DISPONIVEL';
-  const severidade = online ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : 'warning';
+  const credencial = situacao.codigo === 'VALIDADE' || situacao.codigo === 'CREDENCIAL';
+  const severidade = online ? 'success' : situacao.codigo === 'SIMULADO' ? 'info' : credencial ? 'error' : 'warning';
   const relogio = segundos > 0 ? ` Próxima consulta em ${formatarRelogio(segundos)}.` : '';
   const aviso = avisoSituacao(situacao);
   const linhas = linhasDetalheSituacao(situacao);
   return <Alert className={pulso ? 'painel-situacao-atualizado' : undefined} severity={severidade} sx={{ '& .MuiAlert-message': { width: '100%' } }}>
     <AlertTitle>{online ? 'Situação da Receita Federal: Online' : 'Situação da Receita Federal'}</AlertTitle>
     {atualizadoEm ? <Typography className="aviso-atualizacao" variant="body2">Consulta atualizada às {formatarInstante(atualizadoEm)}.</Typography> : null}
+    <Typography variant="body2">Validade da credencial: {formatarDataIso(situacao.validadeCredencial)}</Typography>
     {online ? <Typography>A conexão foi confirmada.</Typography> : <Typography>{situacao.mensagem}</Typography>}
     {aviso ? <Typography variant="body2" sx={{ mt: 0.5 }}>{aviso}</Typography> : null}
     {!online && situacao.proximaAcao ? <Typography variant="body2" sx={{ mt: 0.5 }}>{situacao.proximaAcao}{relogio}</Typography> : null}

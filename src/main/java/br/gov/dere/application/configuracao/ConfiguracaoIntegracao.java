@@ -10,4 +10,5 @@ public record ConfiguracaoIntegracao(
     boolean clientSecretConfigured,
     String environment,
     String schemaVersion,
-    int limiteUploadMb) {}
+    int limiteUploadMb,
+    String validadeCredencial) {}

@@ -9,4 +9,5 @@ public record AtualizacaoConfiguracaoIntegracao(
     String clientSecret,
     String environment,
     String schemaVersion,
-    Integer limiteUploadMb) {}
+    Integer limiteUploadMb,
+    String validadeCredencial) {}

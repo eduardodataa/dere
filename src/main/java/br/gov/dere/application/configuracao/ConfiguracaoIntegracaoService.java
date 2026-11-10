@@ -21,6 +21,7 @@ public class ConfiguracaoIntegracaoService {
   public static final String ENVIRONMENT = "integration.environment";
   public static final String SCHEMA = "integration.schema_version";
   public static final String LIMITE_UPLOAD = "integration.upload_limit_mb";
+  public static final String VALIDADE_CREDENCIAL = "integration.credential_valid_until";
 
   private final DereAppSettingRepository repo;
   private final PocSecretBox box;
@@ -73,7 +74,8 @@ public class ConfiguracaoIntegracaoService {
         secretPlain != null && !secretPlain.isBlank(),
         textOf(ENVIRONMENT, defaultEnvironment),
         textOf(SCHEMA, defaultSchema),
-        limiteOf());
+        limiteOf(),
+        textOf(VALIDADE_CREDENCIAL, null));
   }
 
   public ConfiguracaoIntegracao publicView() {
@@ -88,7 +90,8 @@ public class ConfiguracaoIntegracaoService {
         atual.clientSecretConfigured(),
         atual.environment(),
         atual.schemaVersion(),
-        atual.limiteUploadMb());
+        atual.limiteUploadMb(),
+        atual.validadeCredencial());
   }
 
   @Transactional
@@ -103,6 +106,13 @@ public class ConfiguracaoIntegracaoService {
     }
     if (update.environment() != null) gravar(ENVIRONMENT, update.environment().trim());
     if (update.schemaVersion() != null) gravar(SCHEMA, update.schemaVersion().trim());
+    if (update.validadeCredencial() != null) {
+      var validade = update.validadeCredencial().trim();
+      if (!validade.isEmpty() && ValidadeCredencial.ler(validade) == null) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A validade da credencial deve estar no formato AAAA-MM-DD.");
+      }
+      gravar(VALIDADE_CREDENCIAL, validade);
+    }
     if (update.limiteUploadMb() != null) {
       var limite = update.limiteUploadMb();
       if (limite < 1 || limite > LeitorXmlUpload.LIMITE_MB) {

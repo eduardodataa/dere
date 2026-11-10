@@ -50,6 +50,23 @@ class ClassificacaoSituacaoReceitaTest {
   }
 
   @Test
+  void credencialRejeitadaNaoTrataComoSistemaFora() {
+    var situacao = ClassificacaoSituacaoReceita.falha("400 Bad Request: {\"error\":\"invalid_client\"}");
+    assertEquals("CREDENCIAL", situacao.codigo());
+    assertFalse(situacao.envioLiberado());
+    assertNull(situacao.aviso());
+  }
+
+  @Test
+  void credencialVencidaBloqueiaSemConsultar() {
+    var situacao = ClassificacaoSituacaoReceita.vencida("2026-10-31");
+    assertEquals("VALIDADE", situacao.codigo());
+    assertFalse(situacao.envioLiberado());
+    assertTrue(situacao.mensagem().contains("31/10/2026"));
+    assertNull(situacao.aviso());
+  }
+
+  @Test
   void limiteDeConsultaEsperaQuinzeMinutos() {
     var situacao = ClassificacaoSituacaoReceita.falha("429 Too Many Requests: {\"message\":\"API rate limit exceeded\"}");
     assertEquals("LIMITE", situacao.codigo());

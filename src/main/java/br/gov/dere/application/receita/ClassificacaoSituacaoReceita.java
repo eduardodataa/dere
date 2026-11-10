@@ -1,5 +1,6 @@
 package br.gov.dere.application.receita;
 
+import br.gov.dere.application.configuracao.ValidadeCredencial;
 import java.util.Locale;
 
 public final class ClassificacaoSituacaoReceita {
@@ -30,6 +31,17 @@ public final class ClassificacaoSituacaoReceita {
         null);
   }
 
+  public static SituacaoReceita vencida(String validade) {
+    var data = ValidadeCredencial.exibir(validade);
+    return criar(
+        "VALIDADE",
+        false,
+        "A credencial da Receita Integra venceu em " + data + ".",
+        "Gere outra credencial no portal e grave a nova validade. O envio fica bloqueado e o token não é pedido.",
+        INTERVALO_FORA_SEGUNDOS,
+        null);
+  }
+
   public static SituacaoReceita falha(String texto) {
     var base = texto == null ? "" : texto.toLowerCase(Locale.ROOT);
     if (base.contains("429") || base.contains("rate limit") || base.contains("too many requests")) {
@@ -50,6 +62,15 @@ public final class ClassificacaoSituacaoReceita {
           INTERVALO_FORA_SEGUNDOS,
           AVISO_SISTEMA_FORA);
     }
+    if (base.contains("invalid_client") || base.contains("invalid client")) {
+      return criar(
+          "CREDENCIAL",
+          false,
+          "A Receita Federal rejeitou a credencial deste servidor.",
+          "Confira o client id, o secret e a validade no portal do Receita Integra. O envio fica bloqueado até a credencial ser aceita.",
+          INTERVALO_FORA_SEGUNDOS,
+          null);
+    }
     if (base.contains("credenciais receita integra")) {
       return criar(
           "CREDENCIAL",
@@ -69,6 +90,6 @@ public final class ClassificacaoSituacaoReceita {
   }
 
   private static SituacaoReceita criar(String codigo, boolean liberado, String mensagem, String proximaAcao, int segundos, String aviso) {
-    return new SituacaoReceita(codigo, liberado, mensagem, proximaAcao, segundos, aviso, null);
+    return new SituacaoReceita(codigo, liberado, mensagem, proximaAcao, segundos, aviso, null, null);
   }
 }
