@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracao;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.CredenciaisEntidadeService;
 import br.gov.dere.domain.transmissao.EstadoTransmissao;
 import br.gov.dere.integration.receita.ClienteTransmissaoDere;
 import br.gov.dere.integration.receita.ExcecaoTransmissaoGoverno;
@@ -191,7 +192,7 @@ class IntegracaoHttpGovernoTest {
     var factory = new JdkClientHttpRequestFactory(httpClient);
     factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
     var builder = RestClient.builder().requestFactory(factory);
-    var auth = new ReceitaIntegraAuthClient(builder, settings);
+    var auth = new ReceitaIntegraAuthClient(builder, settings, mock(CredenciaisEntidadeService.class));
     var client = new ClienteTransmissaoDere(builder, auth, settings);
     return new HttpTransmissaoGovernoAdapter(client, 3, 20);
   }

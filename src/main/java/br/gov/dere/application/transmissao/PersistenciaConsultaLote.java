@@ -48,7 +48,7 @@ public class PersistenciaConsultaLote {
     var evento = evento(batchId);
     var simulado = evento == null || evento.isSimulated();
     var local = simulado || !integration.current().realAdapterEnabled();
-    return new Reserva(local, batch.getProtocol());
+    return new Reserva(local, batch.getProtocol(), batch.getEntityId());
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -103,5 +103,5 @@ public class PersistenciaConsultaLote {
     attempts.save(tentativa);
   }
 
-  public record Reserva(boolean consultaLocal, String protocolo) {}
+  public record Reserva(boolean consultaLocal, String protocolo, Long entityId) {}
 }

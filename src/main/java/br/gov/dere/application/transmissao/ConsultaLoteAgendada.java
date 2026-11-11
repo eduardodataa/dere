@@ -1,6 +1,7 @@
 package br.gov.dere.application.transmissao;
 
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.ContextoCredencialEntidade;
 import br.gov.dere.persistence.DereBatchRepository;
 import br.gov.dere.persistence.DereEventRepository;
 import org.slf4j.Logger;
@@ -39,7 +40,9 @@ public class ConsultaLoteAgendada {
     if (reserva.protocolo() == null || reserva.protocolo().isBlank()) {
       throw new IllegalStateException("Lote real sem protocolo");
     }
-    persistencia.gravarRetorno(batchId, government.query(reserva.protocolo()));
+    persistencia.gravarRetorno(
+        batchId,
+        ContextoCredencialEntidade.executar(reserva.entityId(), () -> government.query(reserva.protocolo())));
   }
 
   public void adiar(Long batchId) {
@@ -53,7 +56,9 @@ public class ConsultaLoteAgendada {
       var lote = batches.findById(evento.getBatchId()).orElse(null);
       if (lote == null || lote.getProtocol() == null || lote.getProtocol().isBlank()) continue;
       try {
-        persistencia.gravarRetorno(lote.getId(), government.query(lote.getProtocol()));
+        persistencia.gravarRetorno(
+            lote.getId(),
+            ContextoCredencialEntidade.executar(lote.getEntityId(), () -> government.query(lote.getProtocol())));
       } catch (RuntimeException ex) {
         log.warn("Consulta do recibo provisório do lote {} falhou", lote.getId());
       }

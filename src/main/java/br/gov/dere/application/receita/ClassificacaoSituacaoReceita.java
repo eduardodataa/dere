@@ -42,6 +42,16 @@ public final class ClassificacaoSituacaoReceita {
         null);
   }
 
+  public static SituacaoReceita semCredencialEntidade() {
+    return criar(
+        "CREDENCIAL",
+        false,
+        "A entidade não tem Client ID e Client Secret cadastrados.",
+        "Cadastre as chaves na tela de Entidades. O envio fica bloqueado até o cadastro.",
+        INTERVALO_FORA_SEGUNDOS,
+        null);
+  }
+
   public static SituacaoReceita falha(String texto) {
     var base = texto == null ? "" : texto.toLowerCase(Locale.ROOT);
     if (base.contains("429") || base.contains("rate limit") || base.contains("too many requests")) {

@@ -1,6 +1,7 @@
 package br.gov.dere.integration.receita;
 
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.CredenciaisEntidadeService;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,8 +25,11 @@ public class ReceitaIntegraConfiguration {
   }
 
   @Bean
-  ReceitaIntegraAuthClient receitaIntegraAuthClient(RestClient.Builder builder, ConfiguracaoIntegracaoService settings) {
-    return new ReceitaIntegraAuthClient(builder, settings);
+  ReceitaIntegraAuthClient receitaIntegraAuthClient(
+      RestClient.Builder builder,
+      ConfiguracaoIntegracaoService settings,
+      CredenciaisEntidadeService credenciais) {
+    return new ReceitaIntegraAuthClient(builder, settings, credenciais);
   }
 
   @Bean

@@ -57,7 +57,7 @@ class ReenvioLoteNaoTransmitidoTest {
   void naoEnviaNoAdaptadorSimulado() {
     var cenario = cenario(false, true);
     cenario.job.reenviarPendentes();
-    verify(cenario.situacao, never()).atual();
+    verify(cenario.situacao, never()).atual(any());
     verify(cenario.government, never()).submit(any(), any());
   }
 
@@ -153,6 +153,7 @@ class ReenvioLoteNaoTransmitidoTest {
   private static Cenario cenario(boolean adaptadorReal, boolean tokenLiberado) {
     var batch = new DereBatchEntity("<lote/>");
     batch.persistId(4L);
+    batch.ownedBy(1L, 8L);
     batch.aguardandoEnvio();
     var evento = new DereEventEntity("D-1001", "EVT-1", "restricted-production", "nota_2026_001", null);
     evento.persistId(3L);
@@ -171,7 +172,7 @@ class ReenvioLoteNaoTransmitidoTest {
     when(integracao.current()).thenReturn(new ConfiguracaoIntegracao(
         adaptadorReal, !adaptadorReal, "https://api.receitafederal.gov.br/prr-dere", "https://api.receitafederal.gov.br/token",
         "id", "segredo", true, "restricted-production", "nota_2026_001", 50, null));
-    when(situacao.atual()).thenReturn(tokenLiberado ? ClassificacaoSituacaoReceita.disponivel() : ClassificacaoSituacaoReceita.falha("erro ao gerar token"));
+    when(situacao.atual(8L)).thenReturn(tokenLiberado ? ClassificacaoSituacaoReceita.disponivel() : ClassificacaoSituacaoReceita.falha("erro ao gerar token"));
     when(batches.findTop20ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(eq(EventStatus.AGUARDANDO_ENVIO), any()))
         .thenAnswer(inv -> {
           Instant agora = inv.getArgument(1);

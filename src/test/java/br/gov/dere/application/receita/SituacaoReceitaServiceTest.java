@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracao;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.CredencialEntidade;
+import br.gov.dere.application.credencial.CredenciaisEntidadeService;
 import br.gov.dere.integration.receita.ReceitaIntegraAuthClient;
 import org.junit.jupiter.api.Test;
 
@@ -18,10 +20,10 @@ class SituacaoReceitaServiceTest {
   @Test
   void confirmadaNaoPedeOutroToken() {
     var auth = mock(ReceitaIntegraAuthClient.class);
-    var service = servico(auth);
+    var service = servico(auth, credCompleta());
     when(auth.renovar()).thenReturn("tok");
-    var primeira = service.atual();
-    var segunda = service.atual();
+    var primeira = service.atual(1L);
+    var segunda = service.atual(1L);
     verify(auth, times(1)).renovar();
     assertEquals("DISPONIVEL", primeira.codigo());
     assertEquals(0, segunda.segundosProximaConsulta());
@@ -31,10 +33,10 @@ class SituacaoReceitaServiceTest {
   @Test
   void limiteNaoRepeteAConsultaAntesDaEspera() {
     var auth = mock(ReceitaIntegraAuthClient.class);
-    var service = servico(auth);
+    var service = servico(auth, credCompleta());
     when(auth.renovar()).thenThrow(new IllegalStateException("429 Too Many Requests: API rate limit exceeded"));
-    var limitada = service.atual();
-    service.atual();
+    var limitada = service.atual(1L);
+    service.atual(1L);
     verify(auth, times(1)).renovar();
     assertEquals("LIMITE", limitada.codigo());
     assertEquals(ClassificacaoSituacaoReceita.INTERVALO_LIMITE_SEGUNDOS, limitada.segundosProximaConsulta());
@@ -43,12 +45,12 @@ class SituacaoReceitaServiceTest {
   @Test
   void indisponivelVoltaAConsultar() {
     var auth = mock(ReceitaIntegraAuthClient.class);
-    var service = servico(auth);
+    var service = servico(auth, credCompleta());
     when(auth.renovar()).thenReturn("tok");
-    service.atual();
-    service.registrarIndisponivel();
+    service.atual(1L);
+    service.registrarIndisponivel(1L);
     when(auth.renovar()).thenThrow(new IllegalStateException("I/O error on POST request"));
-    var queda = service.atual();
+    var queda = service.atual(1L);
     verify(auth, times(2)).renovar();
     assertEquals("COMUNICACAO", queda.codigo());
     assertEquals(ClassificacaoSituacaoReceita.INTERVALO_FORA_SEGUNDOS, queda.segundosProximaConsulta());
@@ -58,10 +60,12 @@ class SituacaoReceitaServiceTest {
   void credencialVencidaNaoPedeToken() {
     var auth = mock(ReceitaIntegraAuthClient.class);
     var settings = mock(ConfiguracaoIntegracaoService.class);
+    var credenciais = mock(CredenciaisEntidadeService.class);
     when(settings.current()).thenReturn(new ConfiguracaoIntegracao(
         true, false, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
-        "id", "segredo", true, "production", "nota_2026_001", 50, "2020-01-01"));
-    var situacao = new SituacaoReceitaService(settings, auth).atual();
+        "id", "segredo", true, "production", "nota_2026_001", 50, null));
+    when(credenciais.carregar(1L)).thenReturn(new CredencialEntidade(1L, "id", "segredo", true, "2020-01-01"));
+    var situacao = new SituacaoReceitaService(settings, credenciais, auth).atual(1L);
     verify(auth, never()).renovar();
     assertEquals("VALIDADE", situacao.codigo());
     assertFalse(situacao.envioLiberado());
@@ -70,11 +74,32 @@ class SituacaoReceitaServiceTest {
     assertFalse(situacao.detalhe().consultaRealizada());
   }
 
-  private static SituacaoReceitaService servico(ReceitaIntegraAuthClient auth) {
+  @Test
+  void semCredencialNaEntidadeBloqueia() {
+    var auth = mock(ReceitaIntegraAuthClient.class);
     var settings = mock(ConfiguracaoIntegracaoService.class);
+    var credenciais = mock(CredenciaisEntidadeService.class);
+    when(settings.current()).thenReturn(new ConfiguracaoIntegracao(
+        true, false, "https://api.receitafederal.gov.br/dere", "https://api.receitafederal.gov.br/token",
+        "", "", false, "production", "nota_2026_001", 50, null));
+    when(credenciais.carregar(1L)).thenReturn(new CredencialEntidade(1L, null, null, false, null));
+    var situacao = new SituacaoReceitaService(settings, credenciais, auth).atual(1L);
+    verify(auth, never()).renovar();
+    assertEquals("CREDENCIAL", situacao.codigo());
+    assertFalse(situacao.envioLiberado());
+  }
+
+  private static SituacaoReceitaService servico(ReceitaIntegraAuthClient auth, CredencialEntidade cred) {
+    var settings = mock(ConfiguracaoIntegracaoService.class);
+    var credenciais = mock(CredenciaisEntidadeService.class);
     when(settings.current()).thenReturn(new ConfiguracaoIntegracao(
         true, false, "https://api.receitafederal.gov.br/prr-dere", "https://api.receitafederal.gov.br/token",
         "id", "segredo", true, "restricted-production", "nota_2026_001", 50, null));
-    return new SituacaoReceitaService(settings, auth);
+    when(credenciais.carregar(1L)).thenReturn(cred);
+    return new SituacaoReceitaService(settings, credenciais, auth);
+  }
+
+  private static CredencialEntidade credCompleta() {
+    return new CredencialEntidade(1L, "id", "segredo", true, null);
   }
 }

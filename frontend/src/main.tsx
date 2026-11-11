@@ -163,13 +163,9 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     mockEnabled: true,
     baseUrl: 'https://api.receitafederal.gov.br/dere',
     tokenUrl: 'https://api.receitafederal.gov.br/token',
-    clientId: '',
-    clientSecret: '',
-    clientSecretConfigured: false,
     environment: 'restricted-production',
     schemaVersion: 'nota_2026_001',
     limiteUploadMb: 50,
-    validadeCredencial: '',
   });
   const [carregando, setCarregando] = useState(false);
   const [implantacao, setImplantacao] = useState('local');
@@ -185,7 +181,19 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
   useEffect(() => {
     if (!uid || !master) return;
     api.get('/api/settings/integration', { headers: { 'X-User-Id': uid } })
-      .then(response => setIntegracao(atual => ({ ...atual, ...response.data, clientSecret: '' })))
+      .then(response => {
+        const dados = response.data || {};
+        setIntegracao(atual => ({
+          ...atual,
+          realAdapterEnabled: !!dados.realAdapterEnabled,
+          mockEnabled: !!dados.mockEnabled,
+          baseUrl: dados.baseUrl || '',
+          tokenUrl: dados.tokenUrl || '',
+          environment: dados.environment || '',
+          schemaVersion: dados.schemaVersion || '',
+          limiteUploadMb: dados.limiteUploadMb ?? 50,
+        }));
+      })
       .catch(() => setMessage('Falha ao carregar configurações de integração.'));
   }, [api, uid, master, setMessage]);
   useEffect(() => {
@@ -207,9 +215,21 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
         return;
       }
       corpo.limiteUploadMb = limite;
-      if (!corpo.clientSecret) delete corpo.clientSecret;
+      delete corpo.clientId;
+      delete corpo.clientSecret;
+      delete corpo.validadeCredencial;
       const response = await api.put('/api/settings/integration', corpo, { headers: { 'X-User-Id': uid } });
-      setIntegracao(atual => ({ ...atual, ...response.data, clientSecret: '' }));
+      const dados = response.data || {};
+      setIntegracao(atual => ({
+        ...atual,
+        realAdapterEnabled: !!dados.realAdapterEnabled,
+        mockEnabled: !!dados.mockEnabled,
+        baseUrl: dados.baseUrl || '',
+        tokenUrl: dados.tokenUrl || '',
+        environment: dados.environment || '',
+        schemaVersion: dados.schemaVersion || '',
+        limiteUploadMb: dados.limiteUploadMb ?? 50,
+      }));
       setMessage('Configurações de integração salvas.');
     } catch (error) {
       setMessage(error.response?.data?.message || 'Falha ao salvar integração.');
@@ -222,16 +242,13 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
 
   const abaIntegracao = <Card><CardContent><Stack spacing={2}>
     <Typography variant="h6">Integração com a Receita Federal</Typography>
-    <Typography color="text.secondary">Parâmetros do envio. O adaptador real usa OAuth (Receita Integra) e as URLs oficiais. O client secret não é reexibido após salvar.</Typography>
+    <Typography color="text.secondary">Parâmetros do envio. O adaptador real usa OAuth (Receita Integra) e as URLs oficiais. Client ID e Client Secret ficam no cadastro de cada entidade.</Typography>
     {!master ? <Alert severity="warning">Somente usuário master pode alterar estes parâmetros.</Alert> : null}
     {avisoCanal ? <Alert severity="info">{avisoCanal}</Alert> : null}
     <FormControlLabel control={<Switch checked={!!integracao.realAdapterEnabled} disabled={!master || canalTravado} onChange={event => setIntegracao(atual => ({ ...atual, realAdapterEnabled: event.target.checked }))} />} label="Adaptador real (Receita Federal)" />
     <FormControlLabel control={<Switch checked={!!integracao.mockEnabled} disabled={!master || canalTravado || !!integracao.realAdapterEnabled} onChange={event => setIntegracao(atual => ({ ...atual, mockEnabled: event.target.checked }))} />} label="Envio simulado (mock)" />
     <TextField label="URL base" fullWidth disabled={!master || canalTravado} value={integracao.baseUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, baseUrl: event.target.value }))} helperText="Ex.: https://api.receitafederal.gov.br/prr-dere" />
     <TextField label="URL do token (Receita Integra)" fullWidth disabled={!master} value={integracao.tokenUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, tokenUrl: event.target.value }))} />
-    <TextField label="Client ID" fullWidth disabled={!master} value={integracao.clientId || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientId: event.target.value }))} />
-    <TextField label="Client secret" type="password" fullWidth disabled={!master} value={integracao.clientSecret || ''} onChange={event => setIntegracao(atual => ({ ...atual, clientSecret: event.target.value }))} helperText={integracao.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} />
-    <TextField label="Validade da credencial" type="date" fullWidth disabled={!master} value={integracao.validadeCredencial || ''} onChange={event => setIntegracao(atual => ({ ...atual, validadeCredencial: event.target.value }))} helperText="Data do campo Validade no portal do Receita Integra. A Receita não envia essa data na API." slotProps={{ inputLabel: { shrink: true } }} />
     <TextField label="Ambiente" fullWidth disabled={!master || canalTravado} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
     <TextField label="Versão de schema" fullWidth disabled={!master} value={integracao.schemaVersion || ''} onChange={event => setIntegracao(atual => ({ ...atual, schemaVersion: event.target.value }))} />
     <TextField label="Limite de upload (MB)" type="number" fullWidth disabled={!master} value={integracao.limiteUploadMb ?? 50} onChange={event => setIntegracao(atual => ({ ...atual, limiteUploadMb: event.target.value === '' ? '' : Number(event.target.value) }))} helperText="XML avulso e ZIP já descompactado. O máximo é 50 MB." slotProps={{ htmlInput: { min: 1, max: 50, step: 1 } }} />
@@ -298,6 +315,7 @@ function App() {
   const [capsLock, setCapsLock] = useState(false);
   const [page, setPage] = useState(PAGINA_VISAO);
   const [abaConfiguracao, setAbaConfiguracao] = useState(0);
+  const [editarEntidadeId, setEditarEntidadeId] = useState(null);
   const [canal, setCanal] = useState(ambienteDaUrl);
   const [filtroHistorico, setFiltroHistorico] = useState({ layout: '', situacao: '' });
   const [entities, setEntities] = useState<any[]>([]);
@@ -442,8 +460,8 @@ function App() {
   const currentEntity = entities.find(entity => entity.id === eid);
   const subtitulo = `${currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : 'Entidade não selecionada'} · ${rotuloCanalAmbiente(canal.codigo)}`;
   function abrirCredenciais() {
-    setAbaConfiguracao(1);
-    setPage('Configurações');
+    setEditarEntidadeId(eid || null);
+    setPage('Entidades');
     setMessage('');
   }
   function abrirHistorico(layout, situacao) {
@@ -472,7 +490,7 @@ function App() {
       <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} onCredenciais={abrirCredenciais} /></Box>
       {page === PAGINA_HISTORICO ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} entidadeNome={currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : ''} filtroInicial={filtroHistorico} /> : null}
       {page === PAGINA_PERFIL ? <PainelPerfil api={api} setMessage={setMessage} /> : null}
-      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
+      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} abrirId={editarEntidadeId} onAberto={() => setEditarEntidadeId(null)} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
     </Box>
   </Box>;
 }
@@ -621,7 +639,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
       window.clearTimeout(timers.id);
       let dados = situacaoReceitaIndisponivel();
       try {
-        const resposta = await api.get('/api/receita/situacao');
+        const resposta = await api.get('/api/receita/situacao', { headers: { 'X-Entity-Id': eid } });
         dados = resposta.data || dados;
       } catch {
         dados = situacaoReceitaIndisponivel();
@@ -647,7 +665,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     }
     ciclo();
     return () => { cancelado = true; window.clearInterval(timers.id); window.clearTimeout(timers.id); };
-  }, [api, uid]);
+  }, [api, uid, eid]);
 
   function endpointCsv(leiaute) {
     if (leiaute === 'D-1011') return '/api/layouts/d1011/validate-csv';
@@ -907,7 +925,9 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
     {envio && <EnvioSimuladoCard envio={envio} api={api} uid={uid} eid={eid} />}
     <Button onClick={() => setEtapa(1)} disabled={enviando}>Voltar à validação</Button>
   </Stack>;
+  const semCredencialEntidade = !entidade?.clientId || !entidade?.clientSecretConfigured;
   return <Stack spacing={2}>
+    {semCredencialEntidade ? <Alert severity="warning">A entidade está sem Client ID e Client Secret cadastrados. É necessário cadastrá-los na tela de Entidades para o envio.</Alert> : null}
     <PainelSituacaoReceita situacao={situacaoReceita} segundos={segundosReceita} master={master} onCredenciais={onCredenciais} />
     <Card><CardContent><Stack spacing={3}>
       <Stepper activeStep={etapa}>
@@ -1451,7 +1471,7 @@ function LogoAtual({ api, entityId }) {
   return <Box component="img" src={url} alt="Logo cadastrada" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} />;
 }
 
-function EntityAdmin({ api, onChanged, setMessage, master }) {
+function EntityAdmin({ api, onChanged, setMessage, master, abrirId, onAberto }) {
   const [users, setUsers] = useState([]);
   const [entities, setEntities] = useState([]);
   const [form, setForm] = useState(null);
@@ -1465,12 +1485,19 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
       setUsers(userResponse.data);
     } else {
       setUsers([]);
-      if (lista.length === 1) setForm({ id: lista[0].id, cnpjRoot: lista[0].cnpjRoot, legalName: lista[0].legalName, userIds: lista[0].userIds || [] });
+      if (lista.length === 1) setForm(formularioEntidade(lista[0]));
     }
+    return lista;
   };
   useEffect(() => { load().catch(() => setMessage('Falha ao carregar entidades')); }, []);
-  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [], temLogo: false, logoArquivo: null, removerLogo: false, previa: '' }); }
-  function openEdit(entity) { setForm({ id: entity.id, cnpjRoot: entity.cnpjRoot, legalName: entity.legalName, userIds: entity.userIds || [], temLogo: !!entity.temLogo, logoArquivo: null, removerLogo: false, previa: '' }); }
+  useEffect(() => {
+    if (!abrirId || !entities.length) return;
+    const alvo = entities.find(item => item.id === abrirId);
+    if (alvo) setForm(formularioEntidade(alvo));
+    if (onAberto) onAberto();
+  }, [abrirId, entities]);
+  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [], temLogo: false, logoArquivo: null, removerLogo: false, previa: '', clientId: '', clientSecret: '', clientSecretConfigured: false, validadeCredencial: '' }); }
+  function openEdit(entity) { setForm(formularioEntidade(entity)); }
   function escolherLogo(event) {
     const arquivo = event.target.files?.[0];
     event.target.value = '';
@@ -1482,9 +1509,22 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
   async function save() {
     const cnpjRoot = raizCnpj(form.cnpjRoot);
     if (!cnpjRoot) { setMessage('Informe o CNPJ raiz com 8 dígitos (ou o CNPJ completo).'); return; }
+    const temClientId = !!(form.clientId || '').trim();
+    const temSecret = !!(form.clientSecret || '').trim() || !!form.clientSecretConfigured;
+    if ((!temClientId || !temSecret) && !window.confirm('Client ID e Client Secret não estão cadastrados. Sem esses dados não será possível o envio à Receita Federal. Deseja salvar mesmo assim?')) {
+      return;
+    }
     try {
       const trocouLogo = !!form.logoArquivo || !!form.removerLogo;
-      const body = { cnpjRoot, legalName: form.legalName, userIds: form.userIds, removerLogo: !!form.removerLogo && !form.logoArquivo };
+      const body = {
+        cnpjRoot,
+        legalName: form.legalName,
+        userIds: form.userIds,
+        removerLogo: !!form.removerLogo && !form.logoArquivo,
+        clientId: form.clientId || '',
+        validadeCredencial: form.validadeCredencial || '',
+      };
+      if ((form.clientSecret || '').trim()) body.clientSecret = form.clientSecret.trim();
       if (form.logoArquivo) {
         body.logoBase64 = await lerBase64(form.logoArquivo);
         body.logoTipo = form.logoArquivo.type;
@@ -1508,8 +1548,24 @@ function EntityAdmin({ api, onChanged, setMessage, master }) {
       setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao excluir a entidade.');
     }
   }
-  if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s)</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
-  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Stack spacing={1}><Typography color="text.secondary">Logo da entidade. PNG, JPEG, WEBP ou GIF, até 1 MB. Quando cadastrada, substitui a logo padrão do menu da entidade selecionada.</Typography><Stack direction="row" spacing={2} alignItems="center"><Button component="label" variant="outlined">Selecionar logo<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={escolherLogo} /></Button>{(form.logoArquivo || (form.temLogo && !form.removerLogo)) && <Button color="error" onClick={() => setForm({ ...form, logoArquivo: null, removerLogo: true, previa: '' })}>Remover logo</Button>}</Stack>{form.logoArquivo ? <Typography variant="body2" color="text.secondary">{form.logoArquivo.name}</Typography> : null}{form.previa ? <Box component="img" src={form.previa} alt="Prévia da logo" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} /> : null}{form.temLogo && !form.logoArquivo && !form.removerLogo && !form.previa ? <LogoAtual api={api} entityId={form.id} /> : null}</Stack>}{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
+  if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s){entity.clientId && entity.clientSecretConfigured ? '' : ' · sem Client ID/Secret'}</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
+  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack><Stack spacing={2}><Typography variant="subtitle1">Chaves Receita Integra</Typography><Typography color="text.secondary">Client ID e Client Secret desta entidade. Não são obrigatórios para salvar o cadastro, mas sem eles o envio à Receita Federal fica bloqueado.</Typography><TextField label="Client ID" fullWidth disabled={locked} value={form.clientId || ''} onChange={event => setForm({ ...form, clientId: event.target.value })} /><TextField label="Client secret" type="password" fullWidth disabled={locked} value={form.clientSecret || ''} onChange={event => setForm({ ...form, clientSecret: event.target.value })} helperText={form.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} /><TextField label="Validade da credencial" type="date" fullWidth disabled={locked} value={form.validadeCredencial || ''} onChange={event => setForm({ ...form, validadeCredencial: event.target.value })} helperText="Data do campo Validade no portal do Receita Integra." slotProps={{ inputLabel: { shrink: true } }} /></Stack>{master && <Stack spacing={1}><Typography color="text.secondary">Logo da entidade. PNG, JPEG, WEBP ou GIF, até 1 MB. Quando cadastrada, substitui a logo padrão do menu da entidade selecionada.</Typography><Stack direction="row" spacing={2} alignItems="center"><Button component="label" variant="outlined">Selecionar logo<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={escolherLogo} /></Button>{(form.logoArquivo || (form.temLogo && !form.removerLogo)) && <Button color="error" onClick={() => setForm({ ...form, logoArquivo: null, removerLogo: true, previa: '' })}>Remover logo</Button>}</Stack>{form.logoArquivo ? <Typography variant="body2" color="text.secondary">{form.logoArquivo.name}</Typography> : null}{form.previa ? <Box component="img" src={form.previa} alt="Prévia da logo" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} /> : null}{form.temLogo && !form.logoArquivo && !form.removerLogo && !form.previa ? <LogoAtual api={api} entityId={form.id} /> : null}</Stack>}{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
+}
+function formularioEntidade(entity) {
+  return {
+    id: entity.id,
+    cnpjRoot: entity.cnpjRoot,
+    legalName: entity.legalName,
+    userIds: entity.userIds || [],
+    temLogo: !!entity.temLogo,
+    logoArquivo: null,
+    removerLogo: false,
+    previa: '',
+    clientId: entity.clientId || '',
+    clientSecret: '',
+    clientSecretConfigured: !!entity.clientSecretConfigured,
+    validadeCredencial: entity.validadeCredencial || '',
+  };
 }
 function UserPickList({ users, selectedIds, onChange }) {
   const [availableMarked, setAvailableMarked] = useState([]);

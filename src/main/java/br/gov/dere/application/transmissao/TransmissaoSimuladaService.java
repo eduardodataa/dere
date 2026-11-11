@@ -8,6 +8,7 @@ import br.gov.dere.application.periodico.D1101CsvConverter;
 import br.gov.dere.application.periodico.D1199CsvConverter;
 import br.gov.dere.application.pgcc.D1011CsvConverter;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.ContextoCredencialEntidade;
 import br.gov.dere.application.receita.SituacaoReceitaService;
 import br.gov.dere.application.validacao.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validacao.relatorio.Critica;
@@ -141,7 +142,7 @@ public class TransmissaoSimuladaService {
     var preparado = transacao.executar(() -> persistirEnvio(userId, entityId, cfg.environment(), cfg.schemaVersion(), cfg.realAdapterEnabled(), leiaute, identificador, arquivo, xml, csv, assinado, loteXml));
     try {
       if (cfg.realAdapterEnabled()) {
-        var envio = government.submit(loteXml, identificador);
+        var envio = ContextoCredencialEntidade.executar(entityId, () -> government.submit(loteXml, identificador));
         if (envio.protocol() == null || envio.protocol().isBlank()) {
           throw new ExcecaoTransmissaoGoverno(502, true, envio.responseBody());
         }
@@ -153,12 +154,12 @@ public class TransmissaoSimuladaService {
       var recepcao = assinar(retornos.recepcao(cnpj, cnpj, protocolo, agora), chave);
       return transacao.executar(() -> concluirEnvio(preparado, protocolo, recepcao, 200, true, leiaute, userId, entityId, arquivo, xml, relatorio));
     } catch (ExcecaoTransmissaoGoverno ex) {
-      if (ex.statusCode() == 429) situacaoReceita.registrarIndisponivel();
+      if (ex.statusCode() == 429) situacaoReceita.registrarIndisponivel(entityId);
       var definitiva = recusaDefinitiva(ex);
       if (definitiva) transacao.executar(() -> rejeitarEnvio(preparado, ex));
       throw definitiva ? falhaGoverno(ex, identificador) : falhaDesconhecido(ex, identificador);
     } catch (EnvioNaoIniciadoException ex) {
-      situacaoReceita.registrarIndisponivel();
+      situacaoReceita.registrarIndisponivel(entityId);
       transacao.executar(() -> marcarAguardando(preparado));
       throw falhaNaoIniciado(ex, identificador);
     } catch (ResponseStatusException ex) {
@@ -189,7 +190,7 @@ public class TransmissaoSimuladaService {
       return new ConsultaProtocolo(local.protocol(), local.status(), local.receiptNumber(), null, local.returnXml(), local, null);
     }
     try {
-      var consulta = government.query(numero);
+      var consulta = ContextoCredencialEntidade.executar(entityId, () -> government.query(numero));
       if (batch == null) return consultaSemLote(numero, consulta);
       return transacao.executar(() -> gravarConsultaProtocolo(batch.getId(), numero, consulta));
     } catch (ExcecaoTransmissaoGoverno ex) {
@@ -215,7 +216,7 @@ public class TransmissaoSimuladaService {
     }
     try {
       if (integration.current().realAdapterEnabled()) {
-        var consulta = government.query(batch.getProtocol());
+        var consulta = ContextoCredencialEntidade.executar(entityId, () -> government.query(batch.getProtocol()));
         return transacao.executar(() -> gravarConsultaReal(batchId, consulta));
       }
       var simulada = prepararConsultaSimulada(entityId, batch, evento);

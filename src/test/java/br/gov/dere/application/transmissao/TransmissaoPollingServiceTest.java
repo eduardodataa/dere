@@ -49,9 +49,9 @@ class TransmissaoPollingServiceTest {
     var government = mock(TransmissaoGovernoPort.class);
     var consulta = new ConsultaLoteAgendada(persistencia, government, null, null, null);
     var retorno = new ResultadoConsulta("2.202610.1", EstadoTransmissao.PROCESSING, "1", null, "<ok/>", 200);
-    when(persistencia.reservar(7L)).thenReturn(new PersistenciaConsultaLote.Reserva(false, "2.202610.1"));
+    when(persistencia.reservar(7L)).thenReturn(new PersistenciaConsultaLote.Reserva(false, "2.202610.1", 8L));
     when(government.query("2.202610.1")).thenReturn(retorno);
-    when(persistencia.reservar(8L)).thenReturn(new PersistenciaConsultaLote.Reserva(true, "1.20260101010101.000001"));
+    when(persistencia.reservar(8L)).thenReturn(new PersistenciaConsultaLote.Reserva(true, "1.20260101010101.000001", 8L));
     consulta.consultar(7L);
     consulta.consultar(8L);
     verify(government).query("2.202610.1");

@@ -2,6 +2,7 @@ package br.gov.dere.application.transmissao;
 
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
+import br.gov.dere.application.credencial.ContextoCredencialEntidade;
 import br.gov.dere.application.d1001.D1001ImportService;
 import br.gov.dere.application.receita.SituacaoReceitaService;
 import br.gov.dere.domain.EventStatus;
@@ -73,7 +74,7 @@ public class ReenvioLoteNaoTransmitido {
     if ("ausente".equals(recusa)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado");
     if ("outra".equals(recusa)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lote de outra entidade");
     if (recusa != null) throw new ResponseStatusException(HttpStatus.CONFLICT, textoRecusa(recusa));
-    if (!situacao.atual().envioLiberado()) {
+    if (!situacao.atual(entityId).envioLiberado()) {
       transacao.executar(() -> colocarNaFila(batchId));
       return "A Receita ainda não entregou o token. O lote ficou aguardando e será enviado com o mesmo identificador quando ela voltar.";
     }
@@ -85,7 +86,8 @@ public class ReenvioLoteNaoTransmitido {
     }
     if (reserva == null) throw new ResponseStatusException(HttpStatus.CONFLICT, "O lote já está em envio ou não tem o XML gravado.");
     try {
-      var resultado = government.submit(reserva.loteXml(), reserva.identificador());
+      var resultado = ContextoCredencialEntidade.executar(
+          reserva.entityId(), () -> government.submit(reserva.loteXml(), reserva.identificador()));
       if (resultado == null || resultado.protocol() == null || resultado.protocol().isBlank()) {
         var corpo = resultado == null ? "" : resultado.responseBody();
         transacao.executar(() -> encerrarDesconhecido(batchId, corpo));
@@ -95,11 +97,11 @@ public class ReenvioLoteNaoTransmitido {
       gravarCadastro(reserva, batchId);
       return "Lote reenviado com o mesmo identificador. O protocolo foi registrado.";
     } catch (EnvioNaoIniciadoException ex) {
-      situacao.registrarIndisponivel();
+      situacao.registrarIndisponivel(entityId);
       transacao.executar(() -> adiar(batchId));
       return "O lote ainda não saiu. Ele será enviado com o mesmo identificador quando a Receita voltar.";
     } catch (ExcecaoTransmissaoGoverno ex) {
-      if (ex.statusCode() == 429) situacao.registrarIndisponivel();
+      if (ex.statusCode() == 429) situacao.registrarIndisponivel(entityId);
       if (duplicidade(ex.responseBody())) {
         transacao.executar(() -> encerrarDesconhecido(batchId, ex.responseBody()));
         return "A Receita indicou que este identificador já existe. O lote fica para conciliação e não será enviado de novo.";
@@ -119,10 +121,10 @@ public class ReenvioLoteNaoTransmitido {
   @Scheduled(fixedDelayString = "${dere.transmission.poll-delay-ms:30000}")
   public void reenviarPendentes() {
     if (!integracao.current().realAdapterEnabled()) return;
-    if (!situacao.atual().envioLiberado()) return;
     var agora = Instant.now();
     for (var lote : batches.findTop20ByStatusAndNextQueryAtLessThanEqualOrderByNextQueryAtAsc(EventStatus.AGUARDANDO_ENVIO, agora)) {
       try {
+        if (lote.getEntityId() == null || !situacao.atual(lote.getEntityId()).envioLiberado()) continue;
         reenviar(lote.getId());
       } catch (RuntimeException ex) {
         log.warn("reenvio do lote {} não concluído: {}", lote.getId(), ex.toString());
@@ -140,13 +142,14 @@ public class ReenvioLoteNaoTransmitido {
     if (reserva == null) return;
     ResultadoEnvio resultado;
     try {
-      resultado = government.submit(reserva.loteXml(), reserva.identificador());
+      resultado = ContextoCredencialEntidade.executar(
+          reserva.entityId(), () -> government.submit(reserva.loteXml(), reserva.identificador()));
     } catch (EnvioNaoIniciadoException ex) {
-      situacao.registrarIndisponivel();
+      situacao.registrarIndisponivel(reserva.entityId());
       transacao.executar(() -> adiar(batchId));
       return;
     } catch (ExcecaoTransmissaoGoverno ex) {
-      if (ex.statusCode() == 429) situacao.registrarIndisponivel();
+      if (ex.statusCode() == 429) situacao.registrarIndisponivel(reserva.entityId());
       if (duplicidade(ex.responseBody())) transacao.executar(() -> encerrarDesconhecido(batchId, ex.responseBody()));
       else if (recusaDefinitiva(ex)) transacao.executar(() -> rejeitar(batchId, ex));
       else transacao.executar(() -> encerrarDesconhecido(batchId, ex.responseBody()));
