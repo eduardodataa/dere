@@ -263,17 +263,69 @@ function PainelSegurancaCertificado() {
   return <Box><Button onClick={() => setAberto(atual => !atual)} sx={{ textTransform: 'none', px: 0 }}>{aberto ? 'Recolher' : 'Como protegemos seu certificado e sua senha'}</Button><Collapse in={aberto}><Stack spacing={1.5} sx={{ pt: 1 }}><Typography color="text.secondary">A chave privada não é enviada à Receita Federal. O sistema transmite apenas o documento já assinado. A senha do certificado é custodiada no AWS Secrets Manager, protegida por AWS KMS, e permanece separada do arquivo. Seu uso ocorre somente em memória, no instante da assinatura.</Typography><Typography variant="subtitle2">1. Informar a senha</Typography><Typography color="text.secondary">A senha é enviada uma única vez, no mesmo pedido do arquivo, por canal protegido. Este formulário não a retém e ela nunca volta a ser exibida.</Typography><Typography variant="subtitle2">2. Conferência do arquivo</Typography><Typography color="text.secondary">O serviço verifica, em memória, se o arquivo é um certificado digital válido e se a senha corresponde. Havendo inconsistência, nada é armazenado.</Typography><Typography variant="subtitle2">3. Custódia da senha e do arquivo</Typography><Typography color="text.secondary">O arquivo do certificado permanece cifrado no ambiente da aplicação. A senha é mantida em cofre gerenciado (AWS Secrets Manager), com criptografia de ponta de mercado provida pelo AWS KMS. Arquivo e senha não tramitam juntos nem compartilham o mesmo repositório de dados de negócio.</Typography><Typography variant="subtitle2">4. Controle de acesso</Typography><Typography color="text.secondary">O certificado fica vinculado à entidade. Somente usuários autorizados dessa entidade podem utilizá-lo. A exclusão o desativa imediatamente.</Typography><Typography variant="subtitle2">5. Assinatura da declaração</Typography><Typography color="text.secondary">No envio, o certificado é aberto apenas em memória e o documento é assinado. A Receita recebe o XML autenticado e o certificado público necessário à verificação. A chave privada não integra o arquivo transmitido.</Typography><Typography variant="subtitle2">6. Encaminhamento à Receita</Typography><Typography color="text.secondary">O lote contém o documento assinado. A chave privada permanece no ambiente da aplicação somente durante essa operação e não é retransmitida.</Typography><Typography variant="body2">Anexe apenas certificado A1 de sua titularidade. Não compartilhe o arquivo nem a senha por canais não seguros.</Typography></Stack></Collapse></Box>;
 }
 
-function PainelCertificado({ eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado }) {
+function PainelCertificado({ api, uid, eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado, setMessage, onCredenciaisSalvas }) {
   const [substituir, setSubstituir] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [clientSecretConfigured, setClientSecretConfigured] = useState(false);
+  const [validadeCredencial, setValidadeCredencial] = useState('');
+  const [salvandoCredencial, setSalvandoCredencial] = useState(false);
   const atual = certificadoPrincipal(certificados);
   const cadastrado = Boolean(atual);
-  return <Card><CardContent><Stack spacing={2}>
-    <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h6">Certificado digital</Typography>{atual?.status === 'VALID' ? <VerifiedUserIcon color="success" /> : <VerifiedUserIcon color="disabled" />}</Stack>
-    {cadastrado ? <Stack spacing={0.5}><Stack direction="row" spacing={1} alignItems="center"><CheckCircleIcon color="success" fontSize="small" /><Typography>Certificado cadastrado</Typography></Stack><Typography>Titular: {atual.subject || atual.label || '—'}</Typography><Typography color="text.secondary">Validade: {formatarDia(atual.validUntil)}</Typography></Stack> : <Alert severity="warning">Nenhum certificado cadastrado para esta entidade.</Alert>}
-    <Button variant="contained" onClick={() => setSubstituir(atualValor => !atualValor)}>{cadastrado ? (substituir ? 'Fechar substituição' : 'Substituir certificado') : 'Cadastrar certificado'}</Button>
-    <Collapse in={substituir || !cadastrado}><Stack spacing={2}><TextField select fullWidth label="Entidade" value={eid} disabled={entidadeTravada} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><TextField label="Nome" value={certLabel} onChange={event => setCertLabel(event.target.value)} /><Button component="label" variant="outlined">Selecionar P12/PFX<input hidden type="file" accept=".p12,.pfx" onChange={event => setCertFile(event.target.files?.[0])} /></Button>{certFile ? <Typography color="text.secondary">Arquivo: {certFile.name}</Typography> : null}<TextField label="Senha do certificado" type="password" value={certPassword} onChange={event => setCertPassword(event.target.value)} /><Button variant="contained" onClick={armazenarCertificado}>Armazenar certificado</Button>{certificados.length > 0 && <Divider />}{certificados.map(cert => <Stack key={cert.id} direction="row" justifyContent="space-between" alignItems="center"><Box><Typography>{cert.label}</Typography><Typography variant="body2" color="text.secondary">{cert.subject || '—'} · {formatarDia(cert.validUntil)}</Typography></Box><Button size="small" color="error" onClick={() => excluirCertificado(cert)}>Excluir</Button></Stack>)}</Stack></Collapse>
-    <PainelSegurancaCertificado />
-  </Stack></CardContent></Card>;
+  useEffect(() => {
+    if (!uid || !eid) return;
+    api.get(`/api/entities/${eid}/credenciais`, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } })
+      .then(response => {
+        const dados = response.data || {};
+        setClientId(dados.clientId || '');
+        setClientSecret('');
+        setClientSecretConfigured(!!dados.clientSecretConfigured);
+        setValidadeCredencial(dados.validadeCredencial || '');
+      })
+      .catch(() => setMessage('Falha ao carregar Client ID e Client Secret da entidade.'));
+  }, [api, uid, eid, setMessage]);
+  async function salvarCredenciais() {
+    const temClientId = !!clientId.trim();
+    const temSecret = !!clientSecret.trim() || clientSecretConfigured;
+    if ((!temClientId || !temSecret) && !window.confirm('Client ID e Client Secret não estão cadastrados. Sem esses dados não será possível o envio à Receita Federal. Deseja salvar mesmo assim?')) {
+      return;
+    }
+    setSalvandoCredencial(true);
+    try {
+      const corpo = { clientId: clientId.trim(), validadeCredencial: validadeCredencial || '' };
+      if (clientSecret.trim()) corpo.clientSecret = clientSecret.trim();
+      const response = await api.put(`/api/entities/${eid}/credenciais`, corpo, { headers: { 'X-User-Id': uid, 'X-Entity-Id': eid } });
+      const dados = response.data || {};
+      setClientId(dados.clientId || '');
+      setClientSecret('');
+      setClientSecretConfigured(!!dados.clientSecretConfigured);
+      setValidadeCredencial(dados.validadeCredencial || '');
+      if (onCredenciaisSalvas) await onCredenciaisSalvas();
+      setMessage('Client ID e Client Secret salvos.');
+    } catch (error) {
+      setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao salvar Client ID e Client Secret.');
+    } finally {
+      setSalvandoCredencial(false);
+    }
+  }
+  return <Stack spacing={2}>
+    <Card><CardContent><Stack spacing={2}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h6">Certificado digital</Typography>{atual?.status === 'VALID' ? <VerifiedUserIcon color="success" /> : <VerifiedUserIcon color="disabled" />}</Stack>
+      {cadastrado ? <Stack spacing={0.5}><Stack direction="row" spacing={1} alignItems="center"><CheckCircleIcon color="success" fontSize="small" /><Typography>Certificado cadastrado</Typography></Stack><Typography>Titular: {atual.subject || atual.label || '—'}</Typography><Typography color="text.secondary">Validade: {formatarDia(atual.validUntil)}</Typography></Stack> : <Alert severity="warning">Nenhum certificado cadastrado para esta entidade.</Alert>}
+      <Button variant="contained" onClick={() => setSubstituir(atualValor => !atualValor)}>{cadastrado ? (substituir ? 'Fechar substituição' : 'Substituir certificado') : 'Cadastrar certificado'}</Button>
+      <Collapse in={substituir || !cadastrado}><Stack spacing={2}><TextField select fullWidth label="Entidade" value={eid} disabled={entidadeTravada} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField><TextField label="Nome" value={certLabel} onChange={event => setCertLabel(event.target.value)} /><Button component="label" variant="outlined">Selecionar P12/PFX<input hidden type="file" accept=".p12,.pfx" onChange={event => setCertFile(event.target.files?.[0])} /></Button>{certFile ? <Typography color="text.secondary">Arquivo: {certFile.name}</Typography> : null}<TextField label="Senha do certificado" type="password" value={certPassword} onChange={event => setCertPassword(event.target.value)} /><Button variant="contained" onClick={armazenarCertificado}>Armazenar certificado</Button>{certificados.length > 0 && <Divider />}{certificados.map(cert => <Stack key={cert.id} direction="row" justifyContent="space-between" alignItems="center"><Box><Typography>{cert.label}</Typography><Typography variant="body2" color="text.secondary">{cert.subject || '—'} · {formatarDia(cert.validUntil)}</Typography></Box><Button size="small" color="error" onClick={() => excluirCertificado(cert)}>Excluir</Button></Stack>)}</Stack></Collapse>
+      <PainelSegurancaCertificado />
+    </Stack></CardContent></Card>
+    <Card><CardContent><Stack spacing={2}>
+      <Typography variant="h6">Chaves Receita Integra</Typography>
+      <Typography color="text.secondary">Client ID e Client Secret da entidade selecionada. Sem esses dados o envio à Receita Federal fica bloqueado.</Typography>
+      <TextField select fullWidth label="Entidade" value={eid} disabled={entidadeTravada} onChange={event => setEid(+event.target.value)}>{entities.map(entity => <MenuItem key={entity.id} value={entity.id}>{entity.legalName} — {entity.cnpjRoot}</MenuItem>)}</TextField>
+      <TextField label="Client ID" fullWidth value={clientId} onChange={event => setClientId(event.target.value)} />
+      <TextField label="Client secret" type="password" fullWidth value={clientSecret} onChange={event => setClientSecret(event.target.value)} helperText={clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} />
+      <TextField label="Validade da credencial" type="date" fullWidth value={validadeCredencial} onChange={event => setValidadeCredencial(event.target.value)} helperText="Data do campo Validade no portal do Receita Integra." slotProps={{ inputLabel: { shrink: true } }} />
+      <Box><Button variant="contained" disabled={salvandoCredencial || !eid} onClick={salvarCredenciais}>{salvandoCredencial ? 'Salvando…' : 'Salvar chaves'}</Button></Box>
+    </Stack></CardContent></Card>
+  </Stack>;
 }
 
 function MarcaEntidade({ api, entidade, versao }) {
@@ -315,7 +367,6 @@ function App() {
   const [capsLock, setCapsLock] = useState(false);
   const [page, setPage] = useState(PAGINA_VISAO);
   const [abaConfiguracao, setAbaConfiguracao] = useState(0);
-  const [editarEntidadeId, setEditarEntidadeId] = useState(null);
   const [canal, setCanal] = useState(ambienteDaUrl);
   const [filtroHistorico, setFiltroHistorico] = useState({ layout: '', situacao: '' });
   const [entities, setEntities] = useState<any[]>([]);
@@ -460,8 +511,7 @@ function App() {
   const currentEntity = entities.find(entity => entity.id === eid);
   const subtitulo = `${currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : 'Entidade não selecionada'} · ${rotuloCanalAmbiente(canal.codigo)}`;
   function abrirCredenciais() {
-    setEditarEntidadeId(eid || null);
-    setPage('Entidades');
+    setPage(PAGINA_CERTIFICADO);
     setMessage('');
   }
   function abrirHistorico(layout, situacao) {
@@ -469,7 +519,7 @@ function App() {
     setPage(PAGINA_HISTORICO);
     setMessage('');
   }
-  const certificadoProps = { eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado };
+  const certificadoProps = { api, uid, eid, entities, setEid, entidadeTravada, certificados, certLabel, setCertLabel, certFile, setCertFile, certPassword, setCertPassword, armazenarCertificado, excluirCertificado, setMessage, onCredenciaisSalvas: load };
   return <Box className="app-shell">
     <Drawer variant="permanent" className="sidebar">
       <Box className="brand"><MarcaEntidade api={api} entidade={currentEntity} versao={marcaVersao} /><Typography variant="h5">DeRE</Typography><Typography variant="caption">EFPC / PREVIC</Typography></Box>
@@ -490,7 +540,7 @@ function App() {
       <Box hidden={page !== PAGINA_ENVIO}><ImportWorkspace api={api} uid={uid} eid={eid} entities={entities} setEid={setEid} setMessage={setMessage} master={master} entidadeNome={currentEntity?.legalName} onHistorico={layout => abrirHistorico(layout, '')} onCredenciais={abrirCredenciais} /></Box>
       {page === PAGINA_HISTORICO ? <PainelTransmissoes api={api} uid={uid} eid={eid} setMessage={setMessage} master={master} entidadeNome={currentEntity ? `${currentEntity.legalName} — ${currentEntity.cnpjRoot}` : ''} filtroInicial={filtroHistorico} /> : null}
       {page === PAGINA_PERFIL ? <PainelPerfil api={api} setMessage={setMessage} /> : null}
-      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} abrirId={editarEntidadeId} onAberto={() => setEditarEntidadeId(null)} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
+      {page === 'Configurações' && master ? <PainelConfiguracoes api={api} uid={uid} master={master} itens={menu} visivel={menusVisiveis} onChange={alternarMenu} setMessage={setMessage} abaInicial={abaConfiguracao} /> : page === PAGINA_CERTIFICADO ? <PainelCertificado {...certificadoProps} /> : page === 'Entidades' && master ? <EntityAdmin api={api} onChanged={async (id) => { await load(); if (id) setEid(id); }} setMessage={setMessage} master={master} /> : page === 'Usuários' && master ? <UserAdmin api={api} currentUserId={uid} onSelfMaster={setMaster} setMessage={setMessage} /> : null}
     </Box>
   </Box>;
 }
@@ -927,7 +977,7 @@ function ImportWorkspace({ api, uid, eid, entities, setEid, setMessage, master, 
   </Stack>;
   const semCredencialEntidade = !entidade?.clientId || !entidade?.clientSecretConfigured;
   return <Stack spacing={2}>
-    {semCredencialEntidade ? <Alert severity="warning">A entidade está sem Client ID e Client Secret cadastrados. É necessário cadastrá-los na tela de Entidades para o envio.</Alert> : null}
+    {semCredencialEntidade ? <Alert severity="warning">A entidade está sem Client ID e Client Secret cadastrados. É necessário cadastrá-los na tela de Certificado digital para o envio.</Alert> : null}
     <PainelSituacaoReceita situacao={situacaoReceita} segundos={segundosReceita} master={master} onCredenciais={onCredenciais} />
     <Card><CardContent><Stack spacing={3}>
       <Stepper activeStep={etapa}>
@@ -1471,7 +1521,7 @@ function LogoAtual({ api, entityId }) {
   return <Box component="img" src={url} alt="Logo cadastrada" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} />;
 }
 
-function EntityAdmin({ api, onChanged, setMessage, master, abrirId, onAberto }) {
+function EntityAdmin({ api, onChanged, setMessage, master }) {
   const [users, setUsers] = useState([]);
   const [entities, setEntities] = useState([]);
   const [form, setForm] = useState(null);
@@ -1490,13 +1540,7 @@ function EntityAdmin({ api, onChanged, setMessage, master, abrirId, onAberto }) 
     return lista;
   };
   useEffect(() => { load().catch(() => setMessage('Falha ao carregar entidades')); }, []);
-  useEffect(() => {
-    if (!abrirId || !entities.length) return;
-    const alvo = entities.find(item => item.id === abrirId);
-    if (alvo) setForm(formularioEntidade(alvo));
-    if (onAberto) onAberto();
-  }, [abrirId, entities]);
-  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [], temLogo: false, logoArquivo: null, removerLogo: false, previa: '', clientId: '', clientSecret: '', clientSecretConfigured: false, validadeCredencial: '' }); }
+  function openNew() { setForm({ id: null, cnpjRoot: '', legalName: '', userIds: [], temLogo: false, logoArquivo: null, removerLogo: false, previa: '' }); }
   function openEdit(entity) { setForm(formularioEntidade(entity)); }
   function escolherLogo(event) {
     const arquivo = event.target.files?.[0];
@@ -1509,22 +1553,9 @@ function EntityAdmin({ api, onChanged, setMessage, master, abrirId, onAberto }) 
   async function save() {
     const cnpjRoot = raizCnpj(form.cnpjRoot);
     if (!cnpjRoot) { setMessage('Informe o CNPJ raiz com 8 dígitos (ou o CNPJ completo).'); return; }
-    const temClientId = !!(form.clientId || '').trim();
-    const temSecret = !!(form.clientSecret || '').trim() || !!form.clientSecretConfigured;
-    if ((!temClientId || !temSecret) && !window.confirm('Client ID e Client Secret não estão cadastrados. Sem esses dados não será possível o envio à Receita Federal. Deseja salvar mesmo assim?')) {
-      return;
-    }
     try {
       const trocouLogo = !!form.logoArquivo || !!form.removerLogo;
-      const body = {
-        cnpjRoot,
-        legalName: form.legalName,
-        userIds: form.userIds,
-        removerLogo: !!form.removerLogo && !form.logoArquivo,
-        clientId: form.clientId || '',
-        validadeCredencial: form.validadeCredencial || '',
-      };
-      if ((form.clientSecret || '').trim()) body.clientSecret = form.clientSecret.trim();
+      const body = { cnpjRoot, legalName: form.legalName, userIds: form.userIds, removerLogo: !!form.removerLogo && !form.logoArquivo };
       if (form.logoArquivo) {
         body.logoBase64 = await lerBase64(form.logoArquivo);
         body.logoTipo = form.logoArquivo.type;
@@ -1548,8 +1579,8 @@ function EntityAdmin({ api, onChanged, setMessage, master, abrirId, onAberto }) 
       setMessage(error.response?.data?.message || error.response?.data?.detail || 'Falha ao excluir a entidade.');
     }
   }
-  if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s){entity.clientId && entity.clientSecretConfigured ? '' : ' · sem Client ID/Secret'}</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
-  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack><Stack spacing={2}><Typography variant="subtitle1">Chaves Receita Integra</Typography><Typography color="text.secondary">Client ID e Client Secret desta entidade. Não são obrigatórios para salvar o cadastro, mas sem eles o envio à Receita Federal fica bloqueado.</Typography><TextField label="Client ID" fullWidth disabled={locked} value={form.clientId || ''} onChange={event => setForm({ ...form, clientId: event.target.value })} /><TextField label="Client secret" type="password" fullWidth disabled={locked} value={form.clientSecret || ''} onChange={event => setForm({ ...form, clientSecret: event.target.value })} helperText={form.clientSecretConfigured ? 'Já há um secret cadastrado. Preencha só para substituir.' : 'Informe o secret obtido no Receita Integra.'} /><TextField label="Validade da credencial" type="date" fullWidth disabled={locked} value={form.validadeCredencial || ''} onChange={event => setForm({ ...form, validadeCredencial: event.target.value })} helperText="Data do campo Validade no portal do Receita Integra." slotProps={{ inputLabel: { shrink: true } }} /></Stack>{master && <Stack spacing={1}><Typography color="text.secondary">Logo da entidade. PNG, JPEG, WEBP ou GIF, até 1 MB. Quando cadastrada, substitui a logo padrão do menu da entidade selecionada.</Typography><Stack direction="row" spacing={2} alignItems="center"><Button component="label" variant="outlined">Selecionar logo<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={escolherLogo} /></Button>{(form.logoArquivo || (form.temLogo && !form.removerLogo)) && <Button color="error" onClick={() => setForm({ ...form, logoArquivo: null, removerLogo: true, previa: '' })}>Remover logo</Button>}</Stack>{form.logoArquivo ? <Typography variant="body2" color="text.secondary">{form.logoArquivo.name}</Typography> : null}{form.previa ? <Box component="img" src={form.previa} alt="Prévia da logo" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} /> : null}{form.temLogo && !form.logoArquivo && !form.removerLogo && !form.previa ? <LogoAtual api={api} entityId={form.id} /> : null}</Stack>}{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
+  if (!form) return <Card><CardContent><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="h6">Entidades</Typography>{master && <Button variant="contained" onClick={openNew}>Nova entidade</Button>}</Stack>{entities.map(entity => <Box key={entity.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 1, borderColor: 'divider', py: 1 }}><Box><Typography>{entity.legalName}</Typography><Typography variant="body2" color="text.secondary">{entity.cnpjRoot} · {(entity.userIds || []).length} usuário(s)</Typography></Box><Stack direction="row" spacing={1}><Button onClick={() => openEdit(entity)}>{master ? 'Editar' : 'Ver'}</Button>{master && <Button color="error" onClick={() => remove(entity)}>Excluir</Button>}</Stack></Box>)}</Stack></CardContent></Card>;
+  return <Card><CardContent><Stack spacing={3}><Typography variant="h6">{locked ? 'Entidade' : form.id ? 'Editar entidade' : 'Nova entidade'}</Typography><Stack direction="row" spacing={2}><TextField label="CNPJ raiz" value={form.cnpjRoot} disabled={locked} helperText="8 dígitos da raiz. Aceita o CNPJ completo." onChange={event => setForm({ ...form, cnpjRoot: event.target.value })} /><TextField label="Razão social" value={form.legalName} disabled={locked} onChange={event => setForm({ ...form, legalName: event.target.value })} fullWidth /></Stack>{master && <Stack spacing={1}><Typography color="text.secondary">Logo da entidade. PNG, JPEG, WEBP ou GIF, até 1 MB. Quando cadastrada, substitui a logo padrão do menu da entidade selecionada.</Typography><Stack direction="row" spacing={2} alignItems="center"><Button component="label" variant="outlined">Selecionar logo<input hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={escolherLogo} /></Button>{(form.logoArquivo || (form.temLogo && !form.removerLogo)) && <Button color="error" onClick={() => setForm({ ...form, logoArquivo: null, removerLogo: true, previa: '' })}>Remover logo</Button>}</Stack>{form.logoArquivo ? <Typography variant="body2" color="text.secondary">{form.logoArquivo.name}</Typography> : null}{form.previa ? <Box component="img" src={form.previa} alt="Prévia da logo" sx={{ width: 220, height: 72, objectFit: 'contain', bgcolor: '#fff', borderRadius: 1, border: 1, borderColor: 'divider' }} /> : null}{form.temLogo && !form.logoArquivo && !form.removerLogo && !form.previa ? <LogoAtual api={api} entityId={form.id} /> : null}</Stack>}{master && <Typography color="text.secondary">Usuários vinculados à entidade</Typography>}{master && <UserPickList users={users} selectedIds={form.userIds} onChange={userIds => setForm({ ...form, userIds })} />}<Stack direction="row" spacing={2}>{master && <Button variant="contained" onClick={save}>Salvar</Button>}{!(locked && entities.length === 1) && <Button onClick={() => setForm(null)}>{master ? 'Cancelar' : 'Voltar'}</Button>}</Stack></Stack></CardContent></Card>;
 }
 function formularioEntidade(entity) {
   return {
@@ -1561,10 +1592,6 @@ function formularioEntidade(entity) {
     logoArquivo: null,
     removerLogo: false,
     previa: '',
-    clientId: entity.clientId || '',
-    clientSecret: '',
-    clientSecretConfigured: !!entity.clientSecretConfigured,
-    validadeCredencial: entity.validadeCredencial || '',
   };
 }
 function UserPickList({ users, selectedIds, onChange }) {

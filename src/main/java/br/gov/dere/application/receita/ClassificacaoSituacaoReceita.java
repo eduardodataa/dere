@@ -47,7 +47,7 @@ public final class ClassificacaoSituacaoReceita {
         "CREDENCIAL",
         false,
         "A entidade não tem Client ID e Client Secret cadastrados.",
-        "Cadastre as chaves na tela de Entidades. O envio fica bloqueado até o cadastro.",
+        "Cadastre as chaves na tela de Certificado digital. O envio fica bloqueado até o cadastro.",
         INTERVALO_FORA_SEGUNDOS,
         null);
   }

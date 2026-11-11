@@ -7,6 +7,7 @@ import br.gov.dere.persistence.DereEntityRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -41,6 +42,15 @@ public class CredenciaisEntidadeService {
         entity.getValidadeCredencial());
   }
 
+  @Transactional
+  public CredencialEntidade salvar(Long entityId, String clientId, String clientSecret, String validadeCredencial) {
+    var entity = entities.findById(entityId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Entidade não encontrada"));
+    aplicar(entity, clientId, clientSecret, validadeCredencial);
+    entities.save(entity);
+    return de(entity);
+  }
+
   public void aplicar(DereEntityEntity entity, String clientId, String clientSecret, String validadeCredencial) {
     if (clientId != null) {
       entity.clientId(clientId.trim());
@@ -60,6 +70,21 @@ public class CredenciaisEntidadeService {
       entity.validadeCredencial(validade.isEmpty() ? null : validade);
     }
   }
+
+  public CredencialPublica publica(CredencialEntidade cred) {
+    return new CredencialPublica(
+        cred.entityId(),
+        cred.clientId() == null ? "" : cred.clientId(),
+        cred.clientSecretConfigured(),
+        cred.validadeCredencial() == null ? "" : cred.validadeCredencial());
+  }
+
+  public record CredencialPublica(
+      Long entityId,
+      String clientId,
+      boolean clientSecretConfigured,
+      String validadeCredencial) {}
+
 
   private String decryptOrPlain(String value) {
     try {

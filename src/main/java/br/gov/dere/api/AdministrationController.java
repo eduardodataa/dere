@@ -2,7 +2,6 @@ package br.gov.dere.api;
 
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.credencial.CredenciaisEntidadeService;
-import br.gov.dere.integration.receita.ReceitaIntegraAuthClient;
 import br.gov.dere.persistence.DereEntidadeLogoEntity;
 import br.gov.dere.persistence.DereEntidadeLogoRepository;
 import br.gov.dere.persistence.DereEntityEntity;
@@ -40,21 +39,18 @@ public class AdministrationController {
   private final DereEntityRepository entities;
   private final DereEntidadeLogoRepository logos;
   private final CredenciaisEntidadeService credenciais;
-  private final ReceitaIntegraAuthClient auth;
 
   public AdministrationController(
       AccessService access,
       DereUserRepository users,
       DereEntityRepository entities,
       DereEntidadeLogoRepository logos,
-      CredenciaisEntidadeService credenciais,
-      ReceitaIntegraAuthClient auth) {
+      CredenciaisEntidadeService credenciais) {
     this.access = access;
     this.users = users;
     this.entities = entities;
     this.logos = logos;
     this.credenciais = credenciais;
-    this.auth = auth;
   }
 
   @PostMapping("/users")
@@ -110,11 +106,8 @@ public class AdministrationController {
     assertMaster(actorId);
     var raiz = raizCnpj(request.cnpjRoot());
     requireEntity(raiz, request.legalName());
-    var entity = new DereEntityEntity(raiz, request.legalName().trim());
-    credenciais.aplicar(entity, request.clientId(), request.clientSecret(), request.validadeCredencial());
-    entity = entities.save(entity);
+    var entity = entities.save(new DereEntityEntity(raiz, request.legalName().trim()));
     aplicarLogo(entity.getId(), request);
-    auth.invalidate(entity.getId());
     return toDto(entity, link(entity, request.userIds()));
   }
 
@@ -145,10 +138,8 @@ public class AdministrationController {
     requireEntity(raiz, request.legalName());
     var entity = entities.findById(id).orElseThrow();
     entity.update(raiz, request.legalName().trim());
-    credenciais.aplicar(entity, request.clientId(), request.clientSecret(), request.validadeCredencial());
     entities.save(entity);
     aplicarLogo(entity.getId(), request);
-    auth.invalidate(entity.getId());
     return toDto(entity, link(entity, request.userIds()));
   }
 
@@ -262,10 +253,7 @@ public class AdministrationController {
       List<Long> userIds,
       String logoBase64,
       String logoTipo,
-      Boolean removerLogo,
-      String clientId,
-      String clientSecret,
-      String validadeCredencial) {}
+      Boolean removerLogo) {}
   public record UserDto(Long id, String login, String name, String email, boolean master) {}
   public record EntityDto(
       Long id,
