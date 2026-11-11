@@ -36,6 +36,18 @@ final class MontagemDetalheSituacao {
         quando.toString());
   }
 
+  static DetalheSituacaoReceita semCredencialEntidade(ConfiguracaoIntegracao cfg, Instant quando) {
+    return new DetalheSituacaoReceita(
+        false,
+        texto(cfg.tokenUrl()),
+        texto(cfg.baseUrl()),
+        ambiente(cfg),
+        "Client ID e Client Secret não estão cadastrados nesta entidade. O token não foi pedido.",
+        null,
+        null,
+        quando.toString());
+  }
+
   static DetalheSituacaoReceita consultado(ConfiguracaoIntegracao cfg, Instant quando, Throwable falha) {
     var http = http(falha);
     Integer status = null;

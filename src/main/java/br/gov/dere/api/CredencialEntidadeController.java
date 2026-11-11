@@ -3,6 +3,7 @@ package br.gov.dere.api;
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.credencial.CredenciaisEntidadeService;
 import br.gov.dere.application.credencial.CredenciaisEntidadeService.CredencialPublica;
+import br.gov.dere.application.receita.SituacaoReceitaService;
 import br.gov.dere.integration.receita.ReceitaIntegraAuthClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,14 +19,17 @@ public class CredencialEntidadeController {
   private final AccessService access;
   private final CredenciaisEntidadeService credenciais;
   private final ReceitaIntegraAuthClient auth;
+  private final SituacaoReceitaService situacao;
 
   public CredencialEntidadeController(
       AccessService access,
       CredenciaisEntidadeService credenciais,
-      ReceitaIntegraAuthClient auth) {
+      ReceitaIntegraAuthClient auth,
+      SituacaoReceitaService situacao) {
     this.access = access;
     this.credenciais = credenciais;
     this.auth = auth;
+    this.situacao = situacao;
   }
 
   @GetMapping
@@ -48,6 +52,7 @@ public class CredencialEntidadeController {
         request.clientSecret(),
         request.validadeCredencial());
     auth.invalidate(entityId);
+    situacao.registrarIndisponivel(entityId);
     return credenciais.publica(salva);
   }
 

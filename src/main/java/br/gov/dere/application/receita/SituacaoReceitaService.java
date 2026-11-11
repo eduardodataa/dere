@@ -39,12 +39,12 @@ public class SituacaoReceitaService {
     }
     if (entityId == null) {
       return comData(ClassificacaoSituacaoReceita.semCredencialEntidade()
-          .comDetalhe(MontagemDetalheSituacao.credencialVencida(cfg, agora)), null);
+          .comDetalhe(MontagemDetalheSituacao.semCredencialEntidade(cfg, agora)), null);
     }
     var cred = credenciais.carregar(entityId);
     if (!cred.completa()) {
       var situacao = comData(ClassificacaoSituacaoReceita.semCredencialEntidade()
-          .comDetalhe(MontagemDetalheSituacao.credencialVencida(cfg, agora)), cred);
+          .comDetalhe(MontagemDetalheSituacao.semCredencialEntidade(cfg, agora)), cred);
       caches.put(entityId, new CacheEntidade(situacao, agora.plusSeconds(Math.max(1, situacao.segundosProximaConsulta())), false));
       return situacao;
     }
@@ -55,7 +55,7 @@ public class SituacaoReceitaService {
       return situacao;
     }
     var cache = caches.get(entityId);
-    if (cache != null && "VALIDADE".equals(cache.situacao.codigo())) {
+    if (cache != null && ("VALIDADE".equals(cache.situacao.codigo()) || "CREDENCIAL".equals(cache.situacao.codigo()))) {
       caches.remove(entityId);
       cache = null;
     }

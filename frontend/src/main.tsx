@@ -250,7 +250,6 @@ function PainelConfiguracoes({ api, uid, master, itens, visivel, onChange, setMe
     <TextField label="URL base" fullWidth disabled={!master || canalTravado} value={integracao.baseUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, baseUrl: event.target.value }))} helperText="Ex.: https://api.receitafederal.gov.br/prr-dere" />
     <TextField label="URL do token (Receita Integra)" fullWidth disabled={!master} value={integracao.tokenUrl || ''} onChange={event => setIntegracao(atual => ({ ...atual, tokenUrl: event.target.value }))} />
     <TextField label="Ambiente" fullWidth disabled={!master || canalTravado} value={integracao.environment || ''} onChange={event => setIntegracao(atual => ({ ...atual, environment: event.target.value }))} />
-    <TextField label="Versão de schema" fullWidth disabled={!master} value={integracao.schemaVersion || ''} onChange={event => setIntegracao(atual => ({ ...atual, schemaVersion: event.target.value }))} />
     <TextField label="Limite de upload (MB)" type="number" fullWidth disabled={!master} value={integracao.limiteUploadMb ?? 50} onChange={event => setIntegracao(atual => ({ ...atual, limiteUploadMb: event.target.value === '' ? '' : Number(event.target.value) }))} helperText="XML avulso e ZIP já descompactado. O máximo é 50 MB." slotProps={{ htmlInput: { min: 1, max: 50, step: 1 } }} />
     <Box><Button variant="contained" disabled={!master || carregando} onClick={salvarIntegracao}>{carregando ? 'Salvando…' : 'Salvar integração'}</Button></Box>
   </Stack></CardContent></Card>;
