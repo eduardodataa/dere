@@ -9,6 +9,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import br.gov.dere.application.d1001.D1001XmlGenerator;
+import br.gov.dere.application.transmissao.ArmazenamentoArtefatoTransmissao;
+import br.gov.dere.application.upload.MemoriaArmazenamentoObjetoUpload;
 import br.gov.dere.domain.contributor.D1001;
 import br.gov.dere.domain.layout.ContextoValidacao;
 import br.gov.dere.domain.pgcc.D1011;
@@ -20,9 +22,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 class D1011DependencyValidatorTest {
+  private static ArmazenamentoArtefatoTransmissao artefatos() {
+    return new ArmazenamentoArtefatoTransmissao(new MemoriaArmazenamentoObjetoUpload("dataa-dere"));
+  }
+
   @Test
   void requiresEntityContext() {
-    var validator = new D1011DependencyValidator(mock(JdbcTemplate.class));
+    var validator = new D1011DependencyValidator(mock(JdbcTemplate.class), artefatos());
     var issues = validator.validate(document("12345678", LocalDate.of(2026, 10, 1)), null);
     assertEquals("ENTITY_REQUIRED", issues.get(0).code());
   }
@@ -34,7 +40,7 @@ class D1011DependencyValidatorTest {
         "DeRE10011234567820261001120000000000000001", 1, 2, "dere-poc/0.1", "12345678",
         LocalDate.of(2026, 10, 1), null, 9, List.of(), 0));
     when(jdbc.query(anyString(), any(RowMapper.class), eq(8L))).thenReturn(List.of(xml));
-    var issues = new D1011DependencyValidator(jdbc).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
+    var issues = new D1011DependencyValidator(jdbc, artefatos()).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
     assertTrue(issues.isEmpty());
   }
 
@@ -45,7 +51,7 @@ class D1011DependencyValidatorTest {
         "DeRE10011234567820261001120000000000000001", 1, 2, "dere-poc/0.1", "12345678",
         LocalDate.of(2026, 11, 1), null, 9, List.of(), 0));
     when(jdbc.query(anyString(), any(RowMapper.class), eq(8L))).thenReturn(List.of(xml));
-    var issues = new D1011DependencyValidator(jdbc).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
+    var issues = new D1011DependencyValidator(jdbc, artefatos()).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
     assertTrue(issues.stream().anyMatch(issue -> "D1001_NOT_FOUND_OR_NOT_VALID".equals(issue.code())));
   }
 
@@ -53,9 +59,23 @@ class D1011DependencyValidatorTest {
   void recordsParseErrorOfPersistedXml() {
     var jdbc = mock(JdbcTemplate.class);
     when(jdbc.query(anyString(), any(RowMapper.class), eq(8L))).thenReturn(List.of("<nao-e-d1001/>"));
-    var issues = new D1011DependencyValidator(jdbc).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
+    var issues = new D1011DependencyValidator(jdbc, artefatos()).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
     assertTrue(issues.stream().anyMatch(issue -> "D1001_PARSE_ERROR".equals(issue.code())));
     assertTrue(issues.stream().anyMatch(issue -> "D1001_NOT_FOUND_OR_NOT_VALID".equals(issue.code())));
+  }
+
+  @Test
+  void leXmlPersistidoComoUriS3() throws Exception {
+    var objetos = new MemoriaArmazenamentoObjetoUpload("dataa-dere");
+    var artefatos = new ArmazenamentoArtefatoTransmissao(objetos);
+    var xml = new D1001XmlGenerator().generate(new D1001(
+        "DeRE10011234567820261001120000000000000001", 1, 2, "dere-poc/0.1", "12345678",
+        LocalDate.of(2026, 10, 1), null, 9, List.of(), 0));
+    var uri = objetos.gravar("local/8/2026-11/abc-d1001.xml", xml.getBytes(java.nio.charset.StandardCharsets.UTF_8), "application/xml");
+    var jdbc = mock(JdbcTemplate.class);
+    when(jdbc.query(anyString(), any(RowMapper.class), eq(8L))).thenReturn(List.of(uri));
+    var issues = new D1011DependencyValidator(jdbc, artefatos).validate(document("12345678", LocalDate.of(2026, 10, 1)), new ContextoValidacao(8L, null));
+    assertTrue(issues.isEmpty());
   }
 
   private static D1011 document(String cnpj, LocalDate validFrom) {

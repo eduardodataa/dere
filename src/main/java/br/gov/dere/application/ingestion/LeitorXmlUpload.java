@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,19 +19,40 @@ public final class LeitorXmlUpload {
   private LeitorXmlUpload() {}
 
   public static List<Documento> ler(MultipartFile arquivo, int limiteBytes) throws IOException {
+    return lerCompleto(arquivo, limiteBytes).documentos();
+  }
+
+  public static Resultado lerCompleto(MultipartFile arquivo, int limiteBytes) throws IOException {
     if (arquivo == null || arquivo.isEmpty()) throw new IllegalArgumentException("Arquivo vazio");
     var nome = arquivo.getOriginalFilename();
     if (nome == null || nome.isBlank()) nome = "upload.xml";
+    if (nomeInseguro(nome)) throw new IllegalArgumentException("Nome de arquivo inválido");
     var limite = limiteBytes < 1 || limiteBytes > LIMITE_BYTES ? LIMITE_BYTES : limiteBytes;
     try (var entrada = arquivo.getInputStream()) {
-      return ler(entrada, nome, limite);
+      return lerCompleto(entrada, nome, limite);
     }
   }
 
   static List<Documento> ler(InputStream entrada, String nomeArquivo, int limite) throws IOException {
-    if (nomeArquivo.toLowerCase().endsWith(".zip")) return lerZip(entrada, limite);
-    var bytes = lerContando(entrada, limite, 0, "XML excede " + textoLimite(limite));
-    return List.of(new Documento(nomeArquivo, new String(bytes, StandardCharsets.UTF_8)));
+    return lerCompleto(entrada, nomeArquivo, limite).documentos();
+  }
+
+  static Resultado lerCompleto(InputStream entrada, String nomeArquivo, int limite) throws IOException {
+    if (nomeInseguro(nomeArquivo)) throw new IllegalArgumentException("Nome de arquivo inválido");
+    var lower = nomeArquivo.toLowerCase(Locale.ROOT);
+    if (lower.endsWith(".zip")) {
+      var original = lerContando(entrada, limite, 0, "ZIP excede " + textoLimite(limite));
+      var documentos = lerZip(new java.io.ByteArrayInputStream(original), limite);
+      return new Resultado(nomeArquivo, original, "application/zip", documentos);
+    }
+    var original = lerContando(entrada, limite, 0, "Arquivo excede " + textoLimite(limite));
+    if (lower.endsWith(".csv")) {
+      var csv = new String(original, StandardCharsets.UTF_8);
+      var nomeXml = nomeArquivo.replaceAll("(?i)\\.csv$", "") + ".xml";
+      return new Resultado(nomeArquivo, original, "text/csv", List.of(new Documento(nomeXml, csv, true)));
+    }
+    var xml = new String(original, StandardCharsets.UTF_8);
+    return new Resultado(nomeArquivo, original, "application/xml", List.of(new Documento(nomeArquivo, xml, false)));
   }
 
   private static List<Documento> lerZip(InputStream entrada, int limite) throws IOException {
@@ -44,10 +66,16 @@ public final class LeitorXmlUpload {
         if (++entradas > LIMITE_ENTRADAS) throw new IllegalArgumentException("Lote ZIP excede o limite de entradas");
         if (entry.isDirectory()) continue;
         var nome = entry.getName();
-        var aceito = !nomeInseguro(nome) && nome.toLowerCase().endsWith(".xml");
         var bytes = lerContando(zip, limite, total, mensagem);
         total += bytes.length;
-        if (aceito) documentos.add(new Documento(nome, new String(bytes, StandardCharsets.UTF_8)));
+        if (nomeInseguro(nome)) continue;
+        var lower = nome.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".xml")) {
+          documentos.add(new Documento(nome, new String(bytes, StandardCharsets.UTF_8), false));
+        } else if (lower.endsWith(".csv")) {
+          var nomeXml = nome.replaceAll("(?i)\\.csv$", "") + ".xml";
+          documentos.add(new Documento(nomeXml, new String(bytes, StandardCharsets.UTF_8), true));
+        }
       }
     }
     return documentos;
@@ -72,9 +100,15 @@ public final class LeitorXmlUpload {
     return "o limite de " + limite + " bytes";
   }
 
-  private static boolean nomeInseguro(String nome) {
+  static boolean nomeInseguro(String nome) {
     return nome == null || nome.startsWith("/") || nome.startsWith("\\") || nome.contains("..") || nome.matches("^[A-Za-z]:.*");
   }
 
-  public record Documento(String nome, String xml) {}
+  public record Documento(String nome, String xml, boolean csvOrigem) {
+    public Documento(String nome, String xml) {
+      this(nome, xml, false);
+    }
+  }
+
+  public record Resultado(String nomeOriginal, byte[] original, String contentType, List<Documento> documentos) {}
 }

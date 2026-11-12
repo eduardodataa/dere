@@ -15,6 +15,11 @@ spring:
       schema-locations: classpath:it/schema-jdbc.sql
   task.scheduling.enabled: false
 dere:
+  deployment: local
+  upload:
+    s3:
+      enabled: false
+      bucket: dataa-dere
   mock.enabled: true
   certificate:
     encryption-key: local-poc-key-not-for-production
