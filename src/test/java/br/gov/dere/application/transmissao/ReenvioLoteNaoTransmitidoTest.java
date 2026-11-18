@@ -188,7 +188,7 @@ class ReenvioLoteNaoTransmitidoTest {
     when(attempts.findTopByEventIdAndOperationOrderByAttemptDesc(any(), any())).thenReturn(Optional.empty());
     when(attempts.save(any())).thenAnswer(inv -> inv.getArgument(0));
     var job = new ReenvioLoteNaoTransmitido(batches, events, attempts, integracao, situacao, government,
-        new ArmazenamentoArtefatoTransmissao(), importacao, mock(br.gov.dere.application.access.AccessService.class), TransacaoIsolada.direta());
+        new ArmazenamentoArtefatoTransmissao(new br.gov.dere.application.upload.MemoriaArmazenamentoObjetoUpload("dataa-dere")), importacao, mock(br.gov.dere.application.access.AccessService.class), TransacaoIsolada.direta());
     return new Cenario(job, batch, evento, government, situacao, importacao);
   }
 

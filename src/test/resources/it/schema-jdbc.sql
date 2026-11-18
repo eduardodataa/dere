@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS dere_upload_batch (
   user_id BIGINT NOT NULL,
   entity_id BIGINT NOT NULL,
   source_name VARCHAR(255) NOT NULL,
+  source_object_uri VARCHAR(1000),
   file_count INT NOT NULL,
   valid_count INT NOT NULL,
   invalid_count INT NOT NULL,

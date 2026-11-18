@@ -13,6 +13,13 @@ spring:
   h2.console.enabled: ${DERE_H2_CONSOLE:false}
 dere:
   deployment: ${DERE_DEPLOYMENT:local}
+  upload:
+    diretorio: ${DERE_UPLOAD_DIRETORIO:data/objetos}
+    s3:
+      enabled: ${DERE_UPLOAD_S3_ENABLED:}
+      bucket: ${DERE_UPLOAD_S3_BUCKET:dataa-dere}
+      region: ${DERE_UPLOAD_S3_REGION:sa-east-1}
+      profile: ${DERE_UPLOAD_S3_PROFILE:fenix2s3}
   mock.enabled: ${DERE_MOCK_ENABLED:true}
   certificate.encryption-key: ${DERE_CERTIFICATE_ENCRYPTION_KEY}
   certificate.password-store: ${DERE_CERTIFICATE_PASSWORD_STORE:local}

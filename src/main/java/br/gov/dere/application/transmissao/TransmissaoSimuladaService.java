@@ -281,17 +281,17 @@ public class TransmissaoSimuladaService {
     evento.source(arquivo, null, !adaptadorReal);
     evento.operation(operacao(leiaute, xml));
     evento = events.saveAndFlush(evento);
-    evento.source(arquivo, artefatos.guardar(identificador, "csv", csv), !adaptadorReal);
+    evento.source(arquivo, artefatos.guardar(entityId, identificador, "csv", csv), !adaptadorReal);
     events.saveAndFlush(evento);
-    evento.unsigned(artefatos.guardar(identificador, "evento", xml));
+    evento.unsigned(artefatos.guardar(entityId, identificador, "evento", xml));
     events.saveAndFlush(evento);
-    evento.signed(artefatos.guardar(identificador, "assinado", assinado));
+    evento.signed(artefatos.guardar(entityId, identificador, "assinado", assinado));
     evento.resultadoDesconhecido();
     events.saveAndFlush(evento);
     var batch = new DereBatchEntity("<DeRE/>");
     batch.ownedBy(userId, entityId);
     batch = batches.saveAndFlush(batch);
-    batch.request(artefatos.guardar(identificador, "lote", loteXml));
+    batch.request(artefatos.guardar(entityId, identificador, "lote", loteXml));
     batch.resultadoDesconhecido();
     batches.saveAndFlush(batch);
     evento.attachBatch(batch.getId());
@@ -324,7 +324,7 @@ public class TransmissaoSimuladaService {
     var evento = events.findById(preparado.eventId()).orElseThrow();
     var batch = batches.findById(preparado.batchId()).orElseThrow();
     registrarTentativa(evento.getId(), "SUBMIT", protocolo, recepcao, httpStatus, mock);
-    batch.received(protocolo, artefatos.guardar(evento.getEventIdentifier(), "recepcao", recepcao));
+    batch.received(protocolo, artefatos.guardar(entityId, evento.getEventIdentifier(), "recepcao", recepcao));
     batches.saveAndFlush(batch);
     evento.sent();
     events.saveAndFlush(evento);
@@ -336,7 +336,7 @@ public class TransmissaoSimuladaService {
     var evento = events.findById(preparado.eventId()).orElseThrow();
     var batch = batches.findById(preparado.batchId()).orElseThrow();
     var corpo = ex.responseBody() == null ? "" : ex.responseBody();
-    batch.completed(EventStatus.REJECTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", corpo));
+    batch.completed(EventStatus.REJECTED, artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", corpo));
     batches.save(batch);
     evento.processed(EventStatus.REJECTED, null);
     events.save(evento);
@@ -383,7 +383,7 @@ public class TransmissaoSimuladaService {
   private void aplicarRetorno(DereBatchEntity batch, DereEventEntity evento, ResultadoConsulta consulta, String protocolo) {
     var retorno = consulta.responseBody() == null ? "" : consulta.responseBody();
     var status = statusReceita(consulta);
-    batch.completed(status, artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno));
+    batch.completed(status, artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", retorno));
     batches.save(batch);
     if (status != EventStatus.PROCESSING) {
       evento.processed(status, reciboDe(consulta));
@@ -412,7 +412,7 @@ public class TransmissaoSimuladaService {
   private VisaoTransmissao gravarConsultaSimulada(Long batchId, String recibo, String consulta) {
     var batch = batches.findById(batchId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote não encontrado"));
     var evento = eventoDoLote(batchId);
-    batch.completed(EventStatus.ACCEPTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", consulta));
+    batch.completed(EventStatus.ACCEPTED, artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", consulta));
     batches.save(batch);
     evento.processed(EventStatus.ACCEPTED, recibo);
     events.save(evento);

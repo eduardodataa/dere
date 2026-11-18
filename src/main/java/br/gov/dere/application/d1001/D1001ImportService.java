@@ -3,6 +3,9 @@ package br.gov.dere.application.d1001;
 import br.gov.dere.application.access.AccessService;
 import br.gov.dere.application.configuracao.ConfiguracaoIntegracaoService;
 import br.gov.dere.application.csv.DereCsvConverter;
+import br.gov.dere.application.upload.ArmazenamentoObjetoUpload;
+import br.gov.dere.application.upload.ChaveObjetoUpload;
+import br.gov.dere.application.upload.NomeEntidadeUpload;
 import br.gov.dere.application.validacao.ServicoValidacaoLeiaute;
 import br.gov.dere.application.validacao.relatorio.Critica;
 import br.gov.dere.application.validacao.relatorio.RelatorioValidacao;
@@ -14,6 +17,8 @@ import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -26,13 +31,23 @@ public class D1001ImportService {
   private final AccessService access;
   private final ServicoValidacaoLeiaute validacao;
   private final ConfiguracaoIntegracaoService integracao;
+  private final ArmazenamentoObjetoUpload objetos;
+  private final String deployment;
   private final DereCsvConverter converter = new DereCsvConverter();
 
-  public D1001ImportService(JdbcTemplate jdbc, AccessService access, ServicoValidacaoLeiaute validacao, ConfiguracaoIntegracaoService integracao) {
+  public D1001ImportService(
+      JdbcTemplate jdbc,
+      AccessService access,
+      ServicoValidacaoLeiaute validacao,
+      ConfiguracaoIntegracaoService integracao,
+      ArmazenamentoObjetoUpload objetos,
+      @Value("${dere.deployment:local}") String deployment) {
     this.jdbc = jdbc;
     this.access = access;
     this.validacao = validacao;
     this.integracao = integracao;
+    this.objetos = objetos;
+    this.deployment = deployment;
   }
 
   public void persistValidatedXml(Long userId, Long entityId, String sourceName, String xml) {
@@ -93,7 +108,18 @@ public class D1001ImportService {
 
   private void insertDocument(long batchId, Long userId, Long entityId, NamedXml doc, boolean valid, String message) {
     jdbc.update("INSERT INTO dere_d1001_xml(upload_batch_id,user_id,entity_id,source_name,valid,validation_message,xml_content,created_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
-        batchId, userId, entityId, doc.name(), valid, message, doc.xml());
+        batchId, userId, entityId, doc.name(), valid, message, arquivar(entityId, doc.name(), doc.xml()));
+  }
+
+  private String arquivar(Long entityId, String nome, String xml) {
+    if (xml == null || xml.isBlank() || xml.startsWith("s3://") || xml.startsWith("file:")) return xml;
+    var nomeXml = nome == null || nome.isBlank() ? "evento.xml" : nome;
+    if (!nomeXml.toLowerCase().endsWith(".xml")) nomeXml = nomeXml + ".xml";
+    var id = UUID.randomUUID().toString().replace("-", "");
+    return objetos.gravar(
+        ChaveObjetoUpload.montar(deployment, entityId, NomeEntidadeUpload.de(jdbc, entityId), id, nomeXml),
+        xml.getBytes(StandardCharsets.UTF_8),
+        "application/xml");
   }
 
   private static String readEventId(String xml) {

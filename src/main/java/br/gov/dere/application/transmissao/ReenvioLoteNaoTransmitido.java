@@ -268,7 +268,7 @@ public class ReenvioLoteNaoTransmitido {
     if (batch == null || evento == null || batch.getStatus() != EventStatus.AGUARDANDO_ENVIO) return null;
     var corpo = resultado.responseBody() == null ? "" : resultado.responseBody();
     registrarTentativa(evento.getId(), resultado.protocol(), corpo, resultado.httpStatus());
-    batch.received(resultado.protocol(), artefatos.guardar(evento.getEventIdentifier(), "recepcao", corpo));
+    batch.received(resultado.protocol(), artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "recepcao", corpo));
     batches.save(batch);
     evento.sent();
     events.save(evento);
@@ -281,7 +281,7 @@ public class ReenvioLoteNaoTransmitido {
     var evento = evento(batchId);
     if (batch == null || evento == null || batch.getStatus() != EventStatus.AGUARDANDO_ENVIO) return null;
     var corpo = ex.responseBody() == null ? "" : ex.responseBody();
-    batch.completed(EventStatus.REJECTED, artefatos.guardar(evento.getEventIdentifier(), "retorno", corpo));
+    batch.completed(EventStatus.REJECTED, artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", corpo));
     batches.save(batch);
     evento.processed(EventStatus.REJECTED, null);
     events.save(evento);
@@ -304,7 +304,7 @@ public class ReenvioLoteNaoTransmitido {
 
   private void encerrar(DereBatchEntity batch, DereEventEntity evento, String corpo) {
     if (batch.getStatus() != EventStatus.AGUARDANDO_ENVIO) return;
-    var gravado = corpo == null || corpo.isBlank() ? null : artefatos.guardar(evento.getEventIdentifier(), "retorno", corpo);
+    var gravado = corpo == null || corpo.isBlank() ? null : artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", corpo);
     batch.resultadoDesconhecido(gravado);
     evento.resultadoDesconhecido();
     batches.save(batch);

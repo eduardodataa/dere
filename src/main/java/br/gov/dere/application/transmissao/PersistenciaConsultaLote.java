@@ -68,7 +68,7 @@ public class PersistenciaConsultaLote {
       case REJECTED -> EventStatus.REJECTED;
       default -> EventStatus.PROCESSING;
     };
-    var xml = artefatos.guardar(evento.getEventIdentifier(), "retorno", retorno);
+    var xml = artefatos.guardar(evento.getEntityId(), evento.getEventIdentifier(), "retorno", retorno);
     if (status == EventStatus.PROCESSING) {
       if (!evento.isSimulated() && Recibos.falso(evento.getReceiptNumber())) evento.limparReciboFalso();
       batch.aindaProcessando(xml);
